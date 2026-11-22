@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Fotoğraflarını cihazında düzenle: kırp, döndür, ışık ve renk ayarları, filtreler ve sanatsal efektler.">
+  <meta name="theme-color" content="#0A0A0E">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Zeko Foto">
+  <meta name="format-detection" content="telephone=no">
+  <title>Zeko Foto</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Ana ekran -->
+    <section class="screen is-active" id="screen-home" aria-label="Ana ekran">
+      <main class="scroll home">
+        <header class="home__top">
+          <div class="brand">
+            <svg class="brand__logo" viewBox="0 0 48 48" aria-hidden="true">
+              <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8A6CFF"/><stop offset="1" stop-color="#E04FD4"/></linearGradient></defs>
+              <rect width="48" height="48" rx="13" fill="url(#lg)"/>
+              <circle cx="24" cy="24.6" r="11.6" fill="none" stroke="#fff" stroke-width="3.75"/>
+              <path d="M28.3 16.1L29.4 19.7 33 20.8 29.4 21.9 28.3 25.5 27.2 21.9 23.6 20.8 27.2 19.7z" fill="#fff"/>
+            </svg>
+            <span class="brand__name">Zeko Foto</span>
+          </div>
+          <button class="icon-btn" id="home-info" aria-label="Uygulama bilgisi"><i data-icon="info"></i></button>
+        </header>
+        <div id="install-banner" hidden></div>
+        <div id="resume" class="resume" hidden></div>
+        <section class="hero">
+          <button class="hero__main" data-pick="gallery">
+            <span class="hero__icon"><i data-icon="gallery"></i></span>
+            <span class="hero__title">Fotoğraf düzenle</span>
+            <span class="hero__sub">Galeriden bir fotoğraf seç</span>
+          </button>
+          <button class="hero__cam" data-pick="camera"><i data-icon="camera"></i><span>Kamera</span></button>
+        </section>
+        <h2 class="section-title">Hızlı araçlar</h2>
+        <div class="shortcut-grid" id="shortcut-grid"></div>
+        <p class="privacy">Fotoğraflar yalnızca bu cihazda işlenir.</p>
+      </main>
+    </section>
+
+    <!-- Düzenleyici -->
+    <section class="screen screen--editor" id="screen-editor" aria-label="Düzenleyici">
+      <header class="bar bar--editor">
+        <button class="icon-btn" id="btn-close" aria-label="Kapat"><i data-icon="close"></i></button>
+        <div class="bar__group">
+          <button class="icon-btn" id="btn-undo" aria-label="Geri al" disabled><i data-icon="undo"></i></button>
+          <button class="icon-btn" id="btn-redo" aria-label="Yinele" disabled><i data-icon="redo"></i></button>
+        </div>
+        <button class="btn btn--primary btn--small" id="btn-save">Kaydet</button>
+      </header>
+      <main class="stage" id="stage">
+        <canvas id="gl" aria-label="Fotoğraf"></canvas>
+        <div class="stage__overlay" id="stage-overlay"></div>
+        <button class="compare-btn" id="btn-compare" aria-label="Önceki hali görmek için basılı tut" hidden><i data-icon="compare"></i></button>
+      </main>
+      <footer class="dock">
+        <div class="toolbar" id="toolbar"></div>
+        <div class="tool-panel" id="tool-panel" hidden>
+          <div class="tool-panel__body" id="tool-body"></div>
+          <div class="tool-panel__bar">
+            <button class="icon-btn" id="tool-cancel" aria-label="Vazgeç"><i data-icon="close"></i></button>
+            <span class="tool-panel__title" id="tool-title"></span>
+            <button class="icon-btn icon-btn--accent" id="tool-apply" aria-label="Uygula"><i data-icon="check"></i></button>
+          </div>
+        </div>
+      </footer>
+    </section>
+  </div>
+
+  <input type="file" id="input-camera" accept="image/*" capture="environment" hidden>
+  <input type="file" id="input-gallery" accept="image/*" hidden>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="busy" hidden><div class="busy__card"><span class="spinner"></span><span class="busy__text">İşleniyor…</span></div></div>
+  <div id="overlay-root"></div>
+  <noscript><p class="noscript">Bu uygulama için JavaScript gereklidir.</p></noscript>
+</body>
+</html>

@@ -1,0 +1,83 @@
+# Zeko Foto — iPhone için fotoğraf düzenleyici
+
+Safari’de çalışan, “Ana Ekrana Ekle” ile bağımsız uygulama gibi açılan Türkçe fotoğraf düzenleyici.
+Apple Developer hesabı ve sunucu gerekmez; GitHub Pages üzerinde ücretsiz yayınlanır.
+Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
+
+## Özellikler (sürüm 0.1)
+
+- **Düzenle:** kırpma (serbest, orijinal, 1:1, 4:5, 3:4, 2:3, 9:16, 16:9 …), sola/sağa 90°, yatay/dikey aynalama,
+  ±45° açı düzeltme, dikey/yatay perspektif, yeniden boyutlandırma. Kırpma her zaman fotoğrafın içinde kalır.
+- **Ayarla:** otomatik iyileştirme, parlaklık, pozlama, kontrast, doygunluk, canlılık, sıcaklık, renk tonu,
+  vurgular, gölgeler, beyazlar, siyahlar, netlik, keskinlik, soldurma, gren, vinyet, **eğriler** (RGB/K/Y/M),
+  **HSL** (8 renk), **renk dengesi** (gölge/orta ton/vurgu).
+- **Filtreler:** 39 renk filtresi (Portre, Film, Retro, Yemek, Manzara, Siyah-Beyaz) ve 8 sanatsal efekt
+  (karakalem, renkli kalem, yağlı boya, suluboya, çizgi roman, pop art, neon, kabartma); yoğunluk ayarlı.
+- Basılı tutunca önceki hal, iki parmakla ya da çift dokunuşla yakınlaştırma.
+- Geri al / yinele (25 adım); uygulama kapanırsa **kaldığın yerden devam**.
+- **Kaydet:** JPEG (yüksek/orta) ya da PNG; iOS paylaşım menüsünde “Görüntüyü Kaydet” ile Fotoğraflar’a.
+- Çevrimdışı çalışır.
+
+Sıradaki aşamalar: yazı ve süsleme, güzellik/rötuş, cihazda yapay zekâ araçları (bkz. [GELISTIRME.md](GELISTIRME.md)).
+
+## GitHub Pages’te yayınlama
+
+### Yol A — Tarayıcıdan (kurulum gerekmez)
+
+1. <https://github.com> → sağ üstte **+** → **New repository**.
+2. **Repository name**: ör. `zeko-foto`. **Public** seçili olsun (ücretsiz hesapta Pages için gerekir). **Create repository**.
+3. Açılan sayfada **uploading an existing file** bağlantısı.
+4. Bu klasördeki her şeyi (`index.html`, `manifest.webmanifest`, `sw.js`, `.nojekyll`, `css`, `js`, `icons`;
+   isterseniz `tests`, `README.md`, `GELISTIRME.md`, `package.json`) sürükleyip bırakın. Klasör yapısı korunmalı
+   (`js/core/color.js` gibi). `tests/out` klasörünü yüklemeyin.
+5. **Commit changes**.
+6. **Settings** → **Pages** → **Source: Deploy from a branch**, **Branch: main**, **/(root)** → **Save**.
+7. 1–2 dakika sonra adres görünür: `https://KULLANICI-ADINIZ.github.io/zeko-foto/`.
+
+### Yol B — GitHub Desktop ile (güncellemeler için önerilen)
+
+1. GitHub Desktop → **File → Clone repository** → `zeko-foto`.
+2. **Local path** olarak **OneDrive dışında** bir klasör seçin (ör. `C:\Users\KULLANICI\Documents\GitHub\zeko-foto`).
+   OneDrive, git’in gizli `.git` klasörünü senkronize ederken depoyu bozabilir.
+3. Proje dosyalarını (`.gitignore` ve `.nojekyll` dahil) bu klasöre kopyalayın.
+4. **Summary** yazın → **Commit to main** → **Push origin**.
+5. Pages açık değilse Yol A’daki 6–7. adımlar.
+
+### Güncelleme yayınlama
+
+1. **`sw.js` içindeki `VERSION`** değerini artırın (ör. `zeko-foto-v0.1.0` → `zeko-foto-v0.2.0`), `js/app.js` içindeki
+   `VERSION`’ı da. Sürüm değişmezse iPhone eski dosyaları kullanmaya devam eder.
+2. Yeni dosya eklendiyse `sw.js` → `FILES` listesine ekleyin.
+3. **Commit to main** → **Push origin**. iPhone’da uygulamayı açınca “Yeni sürüm hazır → Yenile” çıkar.
+
+## iPhone’a kurulum
+
+1. iPhone’da **Safari** ile yayın adresini açın.
+2. Alttaki **Paylaş** → **Ana Ekrana Ekle** → **Ekle**.
+3. Ana ekrandaki **Zeko Foto** simgesinden açın: adres çubuğu olmadan tam ekran açılır.
+
+Gereksinim: iOS 15 ve üzeri (WebGL2).
+
+## iPhone test listesi
+
+1. **Kurulum:** simgeden açılıyor, adres çubuğu yok, çentik ve alt çubuk alanında içerik kesilmiyor.
+2. **Açma:** *Fotoğraf düzenle* ile galeriden, *Kamera* ile çekerek açılıyor; yan/dik fotoğrafların yönü doğru.
+3. **Ayarla:** kaydırıcılar akıcı; çift dokunuş değeri sıfırlıyor; *Otomatik* makul; eğri noktası eklenip
+   sürükleniyor, kutunun dışına çekince siliniyor; HSL ve renk dengesi çalışıyor; ✓ sonrası sonuç aynı.
+4. **Filtreler:** küçük resimler doluyor; kategoriler kaydırıyor; yoğunluk değişiyor; sanatsal efektler ✓ ile uygulanıyor.
+5. **Düzenle:** köşe/kenar tutamaçları, oranlar, 90° döndürme, aynalama, açı ve perspektif; kırpma fotoğraftan taşmıyor.
+6. **Karşılaştırma ve yakınlaştırma:** sağ alttaki düğmeye basılı tutunca önceki hal; iki parmakla yakınlaştırma keskin.
+7. **Geri al / yinele** ve uygulamayı kapatıp açınca **Devam et**.
+8. **Kaydet:** *Paylaş* → *Görüntüyü Kaydet* → Fotoğraflar’da tam çözünürlüklü fotoğraf.
+9. **Çevrimdışı:** uçak modunda açılıyor ve düzenleme yapılabiliyor.
+
+## Geliştirme
+
+Mimari, kararlar, tuzaklar ve yol haritası: **[GELISTIRME.md](GELISTIRME.md)**.
+
+Derleme adımı yoktur; dosyalar olduğu gibi yayınlanır. Yerelde denemek için klasörü herhangi bir statik sunucuyla
+açın (service worker için `localhost` ya da HTTPS gerekir).
+
+```bash
+node tests/run.mjs     # renk zinciri, filtreler, geometri, otomatik iyileştirme (+ tests/out/*.png)
+```
