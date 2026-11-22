@@ -62,6 +62,7 @@ const PATHS = {
   curves: '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5" opacity=".5"/><path d="M4 19c6 0 5-6 8-7s4-7 8-8"/>',
   hsl: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v8.5l7.4 4.2M12 12l-7.4 4.2"/>',
   grade: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M12 3.5v2.5M20.5 12H18M12 20.5V18M3.5 12H6"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   sparkle:
     '<path d="M11 3l1.8 5.2L18 10l-5.2 1.8L11 17l-1.8-5.2L4 10l5.2-1.8z"/><path d="M18 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>',
 };

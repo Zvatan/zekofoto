@@ -3,6 +3,7 @@
 // Sanatsal filtreler renk tablosu değil, gölgelendirici efektidir (fx).
 
 export const FILTER_CATEGORIES = [
+  { id: 'kamera', label: 'Kamera' },
   { id: 'portre', label: 'Portre' },
   { id: 'film', label: 'Film' },
   { id: 'retro', label: 'Retro' },
@@ -30,7 +31,100 @@ const BW = [0.3, 0.59, 0.11];
 const f = (id, name, cat, look, amount = 80) => ({ id, name, cat, look, amount });
 const fx = (id, name, effect, amount = 100) => ({ id, name, cat: 'sanat', fx: effect, amount });
 
+// Kamera filtreleri: renk tarifine ek olarak lens/sensör etkileri (extras):
+//   bloom, halation (kırmızı hale), threshold (parlama eşiği), ca (renk kayması),
+//   flash, soft (yumuşaklık), noise (dijital gürültü), 0..1;
+//   leak: { color: [r, g, b], at: [x, y] (çıktı 0..1), size, amount } ışık sızması;
+//   date: true → tarih damgası varsayılan olarak açık.
+const cam = (id, name, look, extras, amount = 90) => ({ id, name, cat: 'kamera', look, extras, amount });
+
+// Meitu filtrelerinin ölçülmüş karşılıkları (2026-11-22). Meitu'nun dosyaları
+// kullanılmadı: kullanıcının referans fotoğrafı ile Meitu'nun aynı fotoğraftaki
+// önizlemeleri karşılaştırılıp bu motorun parametreleri en küçük renk farkına
+// oturtuldu. Önizlemelerin ortak bulanıklığı (netlik −14) ölçümden düşüldü.
+// Ayrıntı: GELISTIRME.md §5.2.
+const MEITU = [
+  cam('flashfilm', 'Flash Film', {
+    curves: {
+      r: [[0, 0], [0.15, 0.115], [0.3, 0.265], [0.5, 0.515], [0.7, 0.75], [0.85, 0.892], [1, 0.995]],
+      g: [[0, 0], [0.15, 0.129], [0.3, 0.292], [0.5, 0.526], [0.7, 0.762], [0.85, 0.916], [1, 1]],
+      b: [[0, 0], [0.15, 0.114], [0.3, 0.279], [0.5, 0.553], [0.7, 0.806], [0.85, 0.956], [1, 1]],
+    },
+    saturation: -9,
+    clarity: -6,
+    vignette: -4,
+    hsl: { red: { s: 5 }, orange: { s: 3, l: -1 }, yellow: { s: -6 }, aqua: { s: 1 }, blue: { s: 1 } },
+  }, null, 100),
+  cam('dslr', 'DSLR', {
+    curves: {
+      r: [[0, 0], [0.15, 0.117], [0.3, 0.269], [0.5, 0.509], [0.7, 0.742], [0.85, 0.882], [1, 0.956]],
+      g: [[0, 0], [0.15, 0.148], [0.3, 0.316], [0.5, 0.542], [0.7, 0.762], [0.85, 0.9], [1, 0.996]],
+      b: [[0, 0], [0.15, 0.144], [0.3, 0.309], [0.5, 0.553], [0.7, 0.802], [0.85, 0.943], [1, 1]],
+    },
+    saturation: -14,
+    hsl: { red: { s: 4 }, orange: { s: 14, l: -3 }, yellow: { s: -7 }, green: { s: -2 }, aqua: { s: -1 }, blue: { s: -2 } },
+  }, null, 100),
+  cam('hdf', 'HDF', {
+    curves: {
+      r: [[0, 0], [0.15, 0.179], [0.3, 0.366], [0.5, 0.582], [0.7, 0.788], [0.85, 0.909], [1, 0.963]],
+      g: [[0, 0], [0.15, 0.162], [0.3, 0.342], [0.5, 0.579], [0.7, 0.776], [0.85, 0.907], [1, 0.975]],
+      b: [[0, 0.011], [0.15, 0.198], [0.3, 0.382], [0.5, 0.61], [0.7, 0.803], [0.85, 0.925], [1, 1]],
+    },
+    saturation: -20,
+    clarity: -35,
+    hsl: { red: { s: 11 }, orange: { s: -2, l: 7 }, yellow: { s: -4 } },
+  }, null, 100),
+  cam('glowyflash', 'Glowy Flash', {
+    curves: {
+      r: [[0, 0], [0.15, 0.145], [0.3, 0.304], [0.5, 0.499], [0.7, 0.689], [0.85, 0.851], [1, 1]],
+      g: [[0, 0], [0.15, 0.134], [0.3, 0.293], [0.5, 0.486], [0.7, 0.691], [0.85, 0.852], [1, 1]],
+      b: [[0, 0], [0.15, 0.135], [0.3, 0.287], [0.5, 0.488], [0.7, 0.697], [0.85, 0.854], [1, 0.998]],
+    },
+    saturation: -8,
+    vignette: 6,
+    hsl: { red: { s: 3 }, orange: { s: 3, l: -2 }, yellow: { s: -2 } },
+  }, null, 100),
+  // Meitu ışığı yüze veriyor; yüz algılama olmadan en iyi uyum ten
+  // parlaklığıyla (turuncu bant) sağlanıyor, gerisi koyulaşıyor.
+  cam('hardflash', 'Hard Flash', {
+    curves: {
+      r: [[0, 0], [0.15, 0.091], [0.3, 0.216], [0.5, 0.416], [0.7, 0.674], [0.85, 0.856], [1, 1]],
+      g: [[0, 0], [0.15, 0.091], [0.3, 0.232], [0.5, 0.453], [0.7, 0.658], [0.85, 0.853], [1, 1]],
+      b: [[0, 0], [0.15, 0.074], [0.3, 0.209], [0.5, 0.429], [0.7, 0.646], [0.85, 0.854], [1, 1]],
+    },
+    saturation: -16,
+    clarity: -9,
+    hsl: { red: { s: -5 }, orange: { l: 24 }, yellow: { s: 3 }, green: { s: -1 }, aqua: { s: 2 }, blue: { s: 4 } },
+  }, null, 100),
+  cam('g7x', 'G7x', {
+    curves: {
+      r: [[0, 0], [0.15, 0.106], [0.3, 0.246], [0.5, 0.471], [0.7, 0.742], [0.85, 0.926], [1, 1]],
+      g: [[0, 0], [0.15, 0.093], [0.3, 0.225], [0.5, 0.463], [0.7, 0.735], [0.85, 0.929], [1, 1]],
+      b: [[0, 0], [0.15, 0.096], [0.3, 0.233], [0.5, 0.509], [0.7, 0.786], [0.85, 0.945], [1, 1]],
+    },
+    saturation: -17,
+    clarity: -25,
+    vignette: -10,
+    hsl: { red: { s: 2 }, orange: { s: 7, l: -7 }, yellow: { s: -1 }, aqua: { s: -2 }, blue: { s: -2 } },
+  }, null, 100),
+];
+
 export const FILTERS = [
+  // Kamera: Meitu'dan ölçülenler, ardından bu uygulamanın kendi kamera filtreleri
+  ...MEITU,
+  cam(
+    'ccd',
+    'CCD',
+    {
+      exposure: 10, contrast: 12, highlights: 10, whites: 12, temperature: -10, tint: -4,
+      saturation: 8, vibrance: 6, fade: 8,
+      curves: { rgb: [[0, 0.05], [0.5, 0.53], [0.85, 0.93], [1, 1]] },
+      hsl: { orange: { l: 6 }, green: { h: -6, s: 10 }, blue: { s: 12 } },
+      grade: { shadows: { hue: 190, sat: 22 }, highlights: { hue: 60, sat: 8 } },
+    },
+    { bloom: 0.45, noise: 0.35, ca: 0.4, soft: 0.2, date: true },
+  ),
+
   // Portre: yumuşak ışık, temiz ten
   f('pamuk', 'Pamuk', 'portre', {
     brightness: 18, exposure: 6, contrast: -14, highlights: -15, shadows: 15,

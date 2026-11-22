@@ -57,6 +57,10 @@ export function defaultSpec(w, h) {
     tone: [0, 0, 0],
     fx: [0, 0, 0],
     seed: 0,
+    // Kamera ekleri: parlama, hale, eşik | renk kayması, flaş, yumuşaklık, gürültü
+    glow: [0, 0, 0.62],
+    lens: [0, 0, 0, 0],
+    leak: null, // { color: [r, g, b], at: [x, y], size, amount }
     effect: null,
     outside: [0.08, 0.08, 0.09],
   };
@@ -317,6 +321,17 @@ export class Engine {
       gl.uniform3f(loc.uTone, t[0], t[1], t[2]);
       const f = spec.fx || [0, 0, 0];
       gl.uniform4f(loc.uFx, f[0], f[1], f[2], spec.seed || 0);
+      const glow = spec.source === 'compare' ? [0, 0, 0.62] : spec.glow || [0, 0, 0.62];
+      gl.uniform4f(loc.uGlow, glow[0], glow[1], glow[2] ?? 0.62, 0);
+      const minSide = Math.min(src.w, src.h);
+      gl.uniform2f(loc.uGlowR, (0.028 * minSide) / src.w, (0.028 * minSide) / src.h);
+      const l = spec.lens || [0, 0, 0, 0];
+      gl.uniform4f(loc.uLens, l[0], l[1], l[2], l[3]);
+      const long = Math.max(src.w, src.h);
+      gl.uniform2f(loc.uSoftR, (0.0006 * long) / src.w, (0.0006 * long) / src.h);
+      const k = spec.leak;
+      gl.uniform4f(loc.uLeak, k ? k.color[0] : 0, k ? k.color[1] : 0, k ? k.color[2] : 0, k ? k.amount : 0);
+      gl.uniform3f(loc.uLeakAt, k ? k.at[0] : 0, k ? k.at[1] : 0, k ? k.size : 1);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

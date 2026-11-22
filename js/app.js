@@ -1,16 +1,16 @@
-// Uygulama denetleyicisi: ana ekran, düzenleyici, araçlar, geçmiş ve kayıt.
+﻿// Uygulama denetleyicisi: ana ekran, düzenleyici, araçlar, geçmiş ve kayıt.
 import { Engine, defaultSpec } from './gl/engine.js';
 import { Viewer } from './viewer.js';
 import { History } from './history.js';
 import * as store from './store.js';
-import { fileToCanvas, scaledCanvas, releaseCanvas } from './image-io.js';
+import { fileToCanvas, scaledCanvas, releaseCanvas, photoDate } from './image-io.js';
 import { icon, hydrateIcons, toast, busy, nextFrame, confirmDialog, sheet, escapeHtml, el } from './ui.js';
 import { openSave } from './export.js';
 import { adjustTool } from './tools/adjust.js';
 import { filtersTool } from './tools/filters.js';
 import { cropTool } from './tools/crop.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.3.0';
 const SCREENS = ['home', 'editor'];
 const COMPARE_SIDE = 2048;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -63,6 +63,10 @@ const host = {
   },
   get overlay() {
     return $('#stage-overlay');
+  },
+  // Çekim tarihi (tarih damgası için).
+  get photoDate() {
+    return new Date(app.doc?.history.meta.photoDate || Date.now());
   },
   // Güncel fotoğrafın küçük kopyası (analiz ve histogram için; önbellekli).
   small(side) {
@@ -195,7 +199,8 @@ async function onPicked(e) {
     const { canvas, hasAlpha, scaled } = await fileToCanvas(file);
     // Küçültülmediyse özgün dosya ilk adım olarak saklanır (yeniden kodlama yok).
     const original = !scaled && /^image\/(jpeg|png)$/i.test(file.type) ? file : null;
-    const history = await History.start(canvas, { hasAlpha, original });
+    const date = await photoDate(file);
+    const history = await History.start(canvas, { hasAlpha, original, photoDate: date.getTime() });
     const cmp = scaledCanvas(canvas, COMPARE_SIDE);
     openDoc(canvas, hasAlpha, history, cmp);
     releaseCanvas(cmp);
@@ -350,6 +355,8 @@ async function applyTool() {
   await nextFrame();
   try {
     const out = app.engine.renderImage(res.spec, res.w, res.h);
+    // Ekran kartı dışında çizilenler (ör. tarih damgası).
+    res.post?.(out);
     replaceCurrent(out);
     app.doc.history.push(out, res.label).catch((err) => {
       console.error(err);

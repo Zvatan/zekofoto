@@ -897,33 +897,77 @@ button:disabled {
 .amount-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 44px;
+}
+
+.amount {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   transition: opacity 0.15s;
 }
 
-.amount-row .ctl-head {
+.amount .ctl-head {
   flex: none;
   gap: 4px;
 }
 
-.amount-row .ctl-label {
+.amount .ctl-label {
   font-size: 13px;
   color: var(--text-2);
 }
 
-.amount-row .ctl-value {
+.amount .ctl-value {
   min-width: 30px;
   font-size: 13px;
 }
 
-.amount-row .slider {
+.amount .slider {
   flex: 1;
+  min-width: 0;
 }
 
-.amount-row.is-off {
+.amount.is-off {
   opacity: 0;
   pointer-events: none;
+}
+
+.stamp-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 11px 0 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.stamp-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.stamp-btn.is-on {
+  background: #ff8a2a;
+  color: #1a0d00;
+  font-weight: 600;
+}
+
+.stage__overlay > .stamp-ov {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.stage.is-comparing .stamp-ov {
+  display: none;
 }
 
 .cat-strip {

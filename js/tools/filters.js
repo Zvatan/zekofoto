@@ -1,11 +1,13 @@
-// Filtreler aracı: kategorili hazır filtreler ve sanatsal efektler,
-// yoğunluk ayarıyla. Küçük resimler fotoğrafın kendisinden, ekran kartında
-// birkaç karede bir parti halinde üretilir.
+// Filtreler aracı: kategorili hazır filtreler, kamera filtreleri ve sanatsal
+// efektler, yoğunluk ayarıyla; isteğe bağlı tarih damgası. Küçük resimler
+// fotoğrafın kendisinden, ekran kartında birkaç karede bir parti halinde
+// üretilir.
 import { createSlider } from '../widgets/slider.js';
-import { el, escapeHtml } from '../ui.js';
+import { el, escapeHtml, icon } from '../ui.js';
 import { compileLook, bakeLut, applyLook, lutLength } from '../core/color.js';
 import { FILTERS, FILTER_CATEGORIES, EFFECTS, findFilter } from '../core/presets.js';
 import { defaultSpec } from '../gl/engine.js';
+import { drawStamp, stampText } from '../stamp.js';
 
 const THUMB = 144;
 
@@ -17,15 +19,19 @@ function squareMatrix(W, H) {
 }
 
 export function filtersTool(host, { category = null } = {}) {
-  const st = { id: null, amounts: new Map() };
+  // date: tarih damgası açık mı; dateTouched: kullanıcı kendisi değiştirdi mi
+  const st = { id: null, amounts: new Map(), date: false, dateTouched: false };
   const lutBuf = new Float32Array(lutLength());
   const seed = Math.random() * 1000;
   let compiled = null;
   let ui = null;
   let thumbJob = 0;
   let slider = null;
+  let stampCanvas = null;
+  let offLayout = null;
 
   const amountOf = (f) => (st.amounts.has(f.id) ? st.amounts.get(f.id) : f.amount);
+  const current = () => (st.id ? findFilter(st.id) : null);
 
   // k: filtrenin derlenmiş tarifi (renk filtrelerinde; tablo ayrıca yüklenir).
   function filterSpec(f, amount, k) {
@@ -42,10 +48,14 @@ export function filtersTool(host, { category = null } = {}) {
     s.tone = [sp.highlights * amount, sp.shadows * amount, sp.clarity * amount];
     s.fx = [sp.sharpen * amount, sp.grain * amount, sp.vignette * amount];
     s.seed = seed;
+    const x = f.extras;
+    if (x) {
+      s.glow = [(x.bloom || 0) * amount, (x.halation || 0) * amount, x.threshold ?? 0.62];
+      s.lens = [(x.ca || 0) * amount, (x.flash || 0) * amount, (x.soft || 0) * amount, (x.noise || 0) * amount];
+      if (x.leak) s.leak = { ...x.leak, amount: x.leak.amount * amount };
+    }
     return s;
   }
-
-  const current = () => (st.id ? findFilter(st.id) : null);
 
   function loadLut(f) {
     if (!f || f.fx) return null;
@@ -58,6 +68,37 @@ export function filtersTool(host, { category = null } = {}) {
     const f = current();
     if (compare || !f) return defaultSpec(host.W, host.H);
     return filterSpec(f, amountOf(f) / 100, compiled);
+  }
+
+  // --- tarih damgası --------------------------------------------------------
+
+  function layoutStamp(r = host.viewer.imageRect()) {
+    if (!stampCanvas) return;
+    stampCanvas.hidden = !st.date;
+    if (!st.date) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    stampCanvas.style.transform = `translate(${r.left}px, ${r.top}px)`;
+    stampCanvas.style.width = `${r.width}px`;
+    stampCanvas.style.height = `${r.height}px`;
+    const w = Math.max(1, Math.round(r.width * dpr));
+    const h = Math.max(1, Math.round(r.height * dpr));
+    if (stampCanvas.width !== w || stampCanvas.height !== h) {
+      stampCanvas.width = w;
+      stampCanvas.height = h;
+    } else {
+      stampCanvas.getContext('2d').clearRect(0, 0, w, h);
+    }
+    drawStamp(stampCanvas, stampText(host.photoDate));
+  }
+
+  function setDate(on, touched = false) {
+    st.date = on;
+    if (touched) st.dateTouched = true;
+    if (ui) {
+      ui.dateBtn.classList.toggle('is-on', on);
+      ui.dateBtn.setAttribute('aria-pressed', on);
+    }
+    layoutStamp();
   }
 
   // --- arayüz ---------------------------------------------------------------
@@ -80,8 +121,15 @@ export function filtersTool(host, { category = null } = {}) {
         host.viewer.invalidate();
       },
     });
+    const amount = el('div', 'amount');
+    amount.append(head, slider.el);
+    const dateBtn = el('button', 'stamp-btn', `${icon('calendar')}<span>Tarih</span>`);
+    dateBtn.type = 'button';
+    dateBtn.setAttribute('aria-pressed', 'false');
+    dateBtn.setAttribute('aria-label', 'Tarih damgası');
+    dateBtn.addEventListener('click', () => setDate(!st.date, true));
     const amountRow = el('div', 'amount-row');
-    amountRow.append(head, slider.el);
+    amountRow.append(amount, dateBtn);
 
     const cats = el('div', 'cat-strip');
     cats.setAttribute('role', 'tablist');
@@ -102,7 +150,13 @@ export function filtersTool(host, { category = null } = {}) {
     for (const f of FILTERS) strip.append(thumbButton(f, f.name));
 
     body.append(amountRow, cats, strip);
-    ui = { amountRow, out, cats, strip };
+    ui = { amount, out, cats, strip, dateBtn };
+
+    // Önizlemedeki tarih damgası: fotoğrafın üstünde, aynı oranlarla.
+    stampCanvas = el('canvas', 'stamp-ov');
+    stampCanvas.hidden = true;
+    host.overlay.append(stampCanvas);
+    offLayout = host.viewer.onLayout((r) => layoutStamp(r));
 
     // Görünen kategoriyi işaretle.
     strip.addEventListener('scroll', () => markCategory(), { passive: true });
@@ -137,6 +191,7 @@ export function filtersTool(host, { category = null } = {}) {
     const job = ++thumbJob;
     const buttons = [...ui.strip.querySelectorAll('.fthumb[data-id]:not([data-id=""])')];
     const matrix = squareMatrix(host.W, host.H);
+    const date = stampText(host.photoDate);
     let i = 0;
     const step = () => {
       if (job !== thumbJob) return;
@@ -149,6 +204,7 @@ export function filtersTool(host, { category = null } = {}) {
         const spec = filterSpec(f, f.amount / 100, k);
         spec.matrix = matrix;
         const c = host.engine.renderImage(spec, THUMB, THUMB);
+        if (f.extras?.date) drawStamp(c, date, { scale: 2.2 });
         btn.querySelector('.fthumb__img').replaceChildren(c);
       }
       compiled = loadLut(current());
@@ -168,12 +224,15 @@ export function filtersTool(host, { category = null } = {}) {
       b.setAttribute('aria-checked', on);
       if (on) b.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
     }
-    ui.amountRow.classList.toggle('is-off', !f);
+    ui.amount.classList.toggle('is-off', !f);
     if (f) {
       const v = amountOf(f);
       slider.set(v);
       ui.out.textContent = String(Math.round(v));
     }
+    // Tarih damgalı kamera filtrelerinde damga kendiliğinden açılır;
+    // kullanıcı düğmeye dokunduysa onun seçimi korunur.
+    if (!st.dateTouched) setDate(!!f?.extras?.date);
     host.viewer.invalidate();
   }
 
@@ -203,18 +262,32 @@ export function filtersTool(host, { category = null } = {}) {
     setCategory(cat);
   }
 
+  const active = () => {
+    const f = current();
+    return !!f && amountOf(f) > 0;
+  };
+
   return {
     title: 'Filtreler',
     mount,
-    isDirty: () => !!st.id && amountOf(current()) > 0,
+    isDirty: () => active() || st.date,
     apply() {
-      const f = current();
-      if (!f || amountOf(f) <= 0) return null;
+      if (!active() && !st.date) return null;
+      const f = active() ? current() : null;
       compiled = loadLut(f);
-      return { spec: spec(false), w: host.W, h: host.H, label: `Filtre: ${f.name}` };
+      const text = stampText(host.photoDate);
+      return {
+        spec: f ? spec(false) : defaultSpec(host.W, host.H),
+        w: host.W,
+        h: host.H,
+        label: f ? `Filtre: ${f.name}${st.date ? ' + tarih' : ''}` : 'Tarih damgası',
+        post: st.date ? (canvas) => drawStamp(canvas, text) : null,
+      };
     },
     destroy() {
       thumbJob++;
+      offLayout?.();
+      stampCanvas?.remove();
     },
   };
 }

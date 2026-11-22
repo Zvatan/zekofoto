@@ -14,13 +14,13 @@ export const MAX_STEPS = 25;
 
 export class History {
   constructor(meta) {
-    this.meta = meta; // { id, entries: [{ key, label, w, h }], index, hasAlpha, seq, createdAt }
+    this.meta = meta; // { id, entries: [{ key, label, w, h }], index, hasAlpha, seq, createdAt, photoDate }
     this.queue = Promise.resolve();
     this.mem = null; // IndexedDB yoksa: anahtar → Blob
   }
 
-  static async start(canvas, { hasAlpha = false, original = null } = {}) {
-    const h = new History({ id: store.newId(), entries: [], index: -1, hasAlpha, seq: 0, createdAt: Date.now() });
+  static async start(canvas, { hasAlpha = false, original = null, photoDate = Date.now() } = {}) {
+    const h = new History({ id: store.newId(), entries: [], index: -1, hasAlpha, seq: 0, createdAt: Date.now(), photoDate });
     try {
       await store.clearAll();
     } catch (err) {

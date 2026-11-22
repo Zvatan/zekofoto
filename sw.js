@@ -1,6 +1,6 @@
-// Çevrimdışı çalışma: uygulama dosyalarını önbelleğe alır. Yeni sürüm
+﻿// Çevrimdışı çalışma: uygulama dosyalarını önbelleğe alır. Yeni sürüm
 // yayınlarken VERSION değerini artırın; kullanıcıya "Yenile" seçeneği çıkar.
-const VERSION = 'zeko-foto-v0.1.0';
+const VERSION = 'zeko-foto-v0.3.0';
 
 const FILES = [
   './',
@@ -11,11 +11,13 @@ const FILES = [
   './js/export.js',
   './js/history.js',
   './js/image-io.js',
+  './js/stamp.js',
   './js/store.js',
   './js/ui.js',
   './js/viewer.js',
   './js/core/auto.js',
   './js/core/color.js',
+  './js/core/exif.js',
   './js/core/geometry.js',
   './js/core/presets.js',
   './js/gl/engine.js',

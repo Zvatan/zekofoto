@@ -15,6 +15,7 @@ import {
   rotate90, flip, frameSize, cropToPx, outputSize, inv, mul, apply, homography, constrainMove, snapCrop,
 } from '../js/core/geometry.js';
 import { autoAdjust } from '../js/core/auto.js';
+import { exifDate, parseExifDate } from '../js/core/exif.js';
 import { encodePng } from './png.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out');
@@ -183,6 +184,82 @@ test('renk filtreleri sonlu, 0..1 aralığında ve birimden farklı', () => {
     const spatial = Math.abs(s.clarity) + Math.abs(s.vignette) + s.grain + Math.abs(s.highlights) + Math.abs(s.shadows);
     assert.ok(diff > 0.01 || spatial > 0, `${f.id} etkisiz`);
   }
+});
+
+test('kamera eklerinin değerleri geçerli', () => {
+  const keys = ['bloom', 'halation', 'ca', 'flash', 'soft', 'noise'];
+  assert.ok(FILTERS.filter((f) => f.cat === 'kamera').length >= 7);
+  const cams = FILTERS.filter((f) => f.extras);
+  assert.ok(cams.length >= 1);
+  for (const f of cams) {
+    for (const k of Object.keys(f.extras)) {
+      assert.ok([...keys, 'threshold', 'leak', 'date'].includes(k), `${f.id}: bilinmeyen ek ${k}`);
+    }
+    for (const k of keys) {
+      const v = f.extras[k] ?? 0;
+      assert.ok(v >= 0 && v <= 1, `${f.id}.${k} = ${v}`);
+    }
+    if (f.extras.leak) {
+      const l = f.extras.leak;
+      assert.ok(l.color.length === 3 && l.at.length === 2 && l.size > 0 && l.amount > 0, `${f.id}.leak`);
+    }
+  }
+});
+
+// --- EXIF ----------------------------------------------------------------
+
+console.log('EXIF tarihi');
+
+// Küçük ama geçerli bir EXIF bloğu: IFD0 → ExifIFD → DateTimeOriginal.
+function jpegWithExif(dateStr, little = true) {
+  const tiff = new DataView(new ArrayBuffer(64));
+  const u16 = (o, v) => tiff.setUint16(o, v, little);
+  const u32 = (o, v) => tiff.setUint32(o, v, little);
+  tiff.setUint16(0, little ? 0x4949 : 0x4d4d);
+  u16(2, 42);
+  u32(4, 8);
+  u16(8, 1); // IFD0: 1 kayıt
+  u16(10, 0x8769);
+  u16(12, 4);
+  u32(14, 1);
+  u32(18, 26); // ExifIFD konumu
+  u32(22, 0);
+  u16(26, 1); // ExifIFD: 1 kayıt
+  u16(28, 0x9003);
+  u16(30, 2);
+  u32(32, 20);
+  u32(36, 44); // metnin konumu
+  u32(40, 0);
+  for (let i = 0; i < 19; i++) tiff.setUint8(44 + i, dateStr.charCodeAt(i));
+  const app1 = new Uint8Array(2 + 2 + 6 + 64);
+  const v = new DataView(app1.buffer);
+  v.setUint16(0, 0xffe1);
+  v.setUint16(2, 2 + 6 + 64);
+  app1.set([0x45, 0x78, 0x69, 0x66, 0, 0], 4);
+  app1.set(new Uint8Array(tiff.buffer), 10);
+  const out = new Uint8Array(2 + app1.length + 4);
+  out.set([0xff, 0xd8], 0);
+  out.set(app1, 2);
+  out.set([0xff, 0xda, 0, 2], 2 + app1.length);
+  return out.buffer;
+}
+
+test('DateTimeOriginal okunur (Intel ve Motorola bayt sırası)', () => {
+  for (const little of [true, false]) {
+    const d = exifDate(jpegWithExif('2024:05:17 14:23:05', little));
+    assert.ok(d, 'tarih bulunamadı');
+    assert.equal(d.getFullYear(), 2024);
+    assert.equal(d.getMonth(), 4);
+    assert.equal(d.getDate(), 17);
+    assert.equal(d.getHours(), 14);
+  }
+});
+
+test('EXIF yoksa ya da bozuksa null', () => {
+  assert.equal(exifDate(new Uint8Array([0xff, 0xd8, 0xff, 0xda, 0, 2]).buffer), null);
+  assert.equal(exifDate(new Uint8Array([1, 2, 3, 4]).buffer), null);
+  assert.equal(parseExifDate('0000:00:00 00:00:00'), null);
+  assert.equal(parseExifDate('abc'), null);
 });
 
 // --- geometri ------------------------------------------------------------

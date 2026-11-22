@@ -1,4 +1,5 @@
 // Fotoğraf okuma ve kanvas yardımcıları.
+import { exifDate } from './core/exif.js';
 
 // iOS Safari'de kanvas alanı en fazla 16.777.216 pikseldir. Uzun kenar
 // 4096 ile sınırlanır; 12 MP iPhone fotoğrafları küçültülmeden işlenir.
@@ -52,6 +53,17 @@ export async function fileToCanvas(blob, maxSide = MAX_SIDE) {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// Fotoğrafın çekim tarihi (tarih damgası için): EXIF, yoksa dosya tarihi.
+export async function photoDate(file) {
+  try {
+    const d = exifDate(await file.slice(0, 196608).arrayBuffer());
+    if (d) return d;
+  } catch (err) {
+    console.error(err);
+  }
+  return file.lastModified ? new Date(file.lastModified) : new Date();
 }
 
 function detectAlpha(img) {

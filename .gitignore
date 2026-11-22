@@ -1,0 +1,4 @@
+tests/out/
+node_modules/
+tools/meitu-olcum/node_modules/
+tools/meitu-olcum/olcum/

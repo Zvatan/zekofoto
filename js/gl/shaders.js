@@ -112,6 +112,13 @@ uniform vec3 uLut;         // x: tablo boyutu, y: ön tablo açık, z: son tablo
 uniform float uPostAmt;    // son tablonun karışım oranı (filtre yoğunluğu)
 uniform vec3 uTone;        // vurgular, gölgeler, netlik (-1..1)
 uniform vec4 uFx;          // keskinlik (0..1), gren (0..1), vinyet (-1..1), gren tohumu
+// Kamera ekleri (bkz. presets.js → extras):
+uniform vec4 uGlow;        // parlama, kırmızı hale, parlama eşiği
+uniform vec2 uGlowR;       // parlama yarıçapı (doku koordinatı)
+uniform vec4 uLens;        // renk kayması, flaş, yumuşaklık, dijital gürültü
+uniform vec2 uSoftR;       // yumuşaklık yarıçapı (doku koordinatı)
+uniform vec4 uLeak;        // ışık sızması: renk (rgb) ve miktar
+uniform vec3 uLeakAt;      // ışık sızmasının merkezi (çıktı koordinatı) ve yarıçapı
 
 // Erken dönüşten sonra örtük türev tanımsızdır; tablolarda mip yok, Lod 0 yeterli.
 vec3 lut(sampler3D t, vec3 c) {
@@ -158,11 +165,26 @@ void main() {
   if (!locate(uv, px)) return;
   vec4 s = textureGrad(uSrc, uv, gDx, gDy);
   vec3 c = s.rgb;
+  if (uLens.x > 0.0) {
+    // Renk kayması: kırmızı ve mavi kanal merkezden zıt yönlere kayar.
+    vec2 d = (uv - 0.5) * uLens.x * 0.008;
+    c.r = textureGrad(uSrc, uv + d, gDx, gDy).r;
+    c.b = textureGrad(uSrc, uv - d, gDx, gDy).b;
+  }
   if (uFx.x > 0.0) {
     vec3 n = textureGrad(uSrc, uv + gDx, gDx, gDy).rgb + textureGrad(uSrc, uv - gDx, gDx, gDy).rgb
            + textureGrad(uSrc, uv + gDy, gDx, gDy).rgb + textureGrad(uSrc, uv - gDy, gDx, gDy).rgb;
     float d = luma(c) - luma(n) * 0.25;
     c = clamp(c + d * uFx.x * 2.2, 0.0, 1.0);
+  }
+  if (uLens.z > 0.0) {
+    // Kompakt kamera yumuşaklığı: yarıçap görüntüye orantılı, önizlemede
+    // çizim pikselinden küçük olmaz.
+    vec2 rx = vec2(max(length(gDx), uSoftR.x), 0.0);
+    vec2 ry = vec2(0.0, max(length(gDy), uSoftR.y));
+    vec3 n = textureGrad(uSrc, uv + rx, gDx, gDy).rgb + textureGrad(uSrc, uv - rx, gDx, gDy).rgb
+           + textureGrad(uSrc, uv + ry, gDx, gDy).rgb + textureGrad(uSrc, uv - ry, gDx, gDy).rgb;
+    c = mix(c, n * 0.25, uLens.z * 0.75);
   }
   bool tone = uTone.x != 0.0 || uTone.y != 0.0 || uTone.z != 0.0;
   vec3 g = tone ? textureLod(uGuide, uv, 0.0).rgb : c;
@@ -172,6 +194,32 @@ void main() {
   }
   if (tone) c = localTone(c, g);
   if (uLut.z > 0.5) c = mix(c, lut(uPost, c), uPostAmt);
+  if (uLens.y > 0.0) {
+    // Flaş: ortası aydınlanır, ışık kenarlara doğru düşer.
+    vec2 a = uOut / max(uOut.x, uOut.y);
+    float r = length((gO - 0.5) * 2.0 * a) / length(a);
+    c *= 1.0 + uLens.y * 0.5 * (1.0 - smoothstep(0.0, 1.0, r));
+  }
+  if (uGlow.x > 0.0 || uGlow.y > 0.0) {
+    // Parlama ve hale: parlak bölgelerin geniş bulanık kopyası ekran
+    // karışımıyla eklenir (rehber doku + halka örnekleri).
+    vec3 b = textureLod(uGuide, uv, 0.0).rgb * 0.2;
+    for (int i = 0; i < 8; i++) {
+      float t = float(i) * 0.7853982;
+      b += textureLod(uGuide, uv + vec2(cos(t), sin(t)) * uGlowR, 0.0).rgb * 0.1;
+    }
+    float th = uGlow.z;
+    float lb = luma(b);
+    vec3 bloom = b * clamp((lb - th) / (1.0 - th), 0.0, 1.0) * uGlow.x * 1.3;
+    vec3 halo = vec3(1.0, 0.3, 0.12) * smoothstep(th - 0.15, 1.0, lb) * uGlow.y;
+    c = 1.0 - (1.0 - clamp(c, 0.0, 1.0)) * (1.0 - clamp(bloom + halo, 0.0, 1.0));
+  }
+  if (uLeak.a > 0.0) {
+    vec2 a = uOut / max(uOut.x, uOut.y);
+    float d = length((gO - uLeakAt.xy) * a) / uLeakAt.z;
+    float m = exp(-d * d * 1.6) * (0.8 + 0.2 * vnoise(gO * 4.0 + 7.0));
+    c = 1.0 - (1.0 - clamp(c, 0.0, 1.0)) * (1.0 - uLeak.rgb * m * uLeak.a);
+  }
   if (uFx.z != 0.0) {
     vec2 a = uOut / max(uOut.x, uOut.y);
     float r = length((gO - 0.5) * 2.0 * a) / length(a);
@@ -185,6 +233,13 @@ void main() {
     float n = vnoise(gp) + vnoise(gp * 2.13 + 17.0) * 0.5 - 0.75;
     float L = luma(c);
     c += n * uFx.y * 0.2 * (0.45 + 0.55 * (1.0 - abs(L - 0.5) * 2.0));
+  }
+  if (uLens.w > 0.0) {
+    // Dijital sensör gürültüsü: piksel düzeyinde, renkli, gölgelerde güçlü.
+    vec2 np = floor(gO * uOut / max(1.0, max(uOut.x, uOut.y) / 2400.0));
+    vec3 n = vec3(hash12(np + 0.31), hash12(np + 17.7), hash12(np + 41.3)) - 0.5;
+    float L = luma(c);
+    c += (n * 0.7 + (n.r + n.g + n.b) * 0.1) * uLens.w * 0.14 * (1.0 - 0.7 * L);
   }
   finish(c, s.a, px);
 }`;

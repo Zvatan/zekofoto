@@ -56,9 +56,12 @@ js/tools/filters.js            Filtreler aracı (kategoriler, küçük resimler,
 js/widgets/slider.js           kaydırıcı; js/widgets/curve.js eğri düzenleyici
 js/history.js, js/store.js     geri alma geçmişi ve IndexedDB
 js/export.js                   Kaydet sayfası ve iOS paylaşımı
-js/image-io.js, js/ui.js       fotoğraf okuma; simgeler, bildirim, alt sayfa
+js/image-io.js, js/ui.js       fotoğraf okuma (+ çekim tarihi); simgeler, bildirim, alt sayfa
+js/stamp.js                    tarih damgası (yedi parçalı turuncu rakamlar, yazı tipi kullanmaz)
 js/core/color.js               renk zinciri → 3B renk tabloları (DOM’suz, Node’da test edilir)
-js/core/presets.js             filtre tarifleri ve efekt tanımları
+js/core/presets.js             filtre tarifleri, kamera ekleri ve efekt tanımları
+js/core/exif.js                JPEG EXIF’inden çekim tarihi (DOM’suz)
+tools/meitu-olcum/             Meitu filtre ölçüm ve doğrulama betikleri (uygulamaya dahil değil)
 js/core/geometry.js            kırpma/döndürme/perspektif matematiği (DOM’suz)
 js/core/auto.js                otomatik iyileştirme (histogram)
 sw.js, manifest.webmanifest    çevrimdışı ve ana ekran uygulaması
@@ -70,10 +73,11 @@ Meitu’daki gibi: araç açılır → canlı önizleme → ✓ ile **tam çöz�
 eklenir; ✕ ile vazgeçilir. Her araç `create(host, opts)` ile kurulur ve şu nesneyi döner:
 
 ```js
-{ title, compare?: false, mount(panelBody), isDirty(), apply() → { spec, w, h, label } | null, destroy() }
+{ title, compare?: false, mount(panelBody), isDirty(), apply() → { spec, w, h, label, post? } | null, destroy() }
 ```
 
-`host`: `engine`, `viewer`, `W`, `H`, `image` (güncel kanvas), `stage`, `overlay`, `small(side)`.
+`host`: `engine`, `viewer`, `W`, `H`, `image` (güncel kanvas), `stage`, `overlay`, `small(side)`, `photoDate`.
+`post(canvas)`: tam boyutlu çıktı çizildikten sonra 2B kanvasa ek çizim (ör. tarih damgası).
 Araç, sahneye `viewer.setContent({ w, h, spec(compare) })` ile ne çizileceğini söyler. `apply()` bir çizim
 tarifi (spec) döner; `app.applyTool` bunu `engine.renderImage` ile tam boyutta çizer.
 
@@ -103,7 +107,7 @@ Yeni araç eklemek: `js/tools/` altına dosya, `app.js` → `TOOLS` (ve istenirs
 
 ### 4.5 Veri modeli (IndexedDB `zeko-foto`, sürüm 1)
 
-- `meta["session"]`: `{ id, entries: [{ key, label, w, h }], index, hasAlpha, seq, createdAt }`
+- `meta["session"]`: `{ id, entries: [{ key, label, w, h }], index, hasAlpha, seq, createdAt, photoDate }`
 - `snaps["<id>:<sıra>"]`: `{ buf: ArrayBuffer, type }`
 
 ## 5. Renk zinciri ve ayar noktaları (js/core/color.js)
@@ -123,8 +127,64 @@ renk dengesi) → vinyet → gren.
 | Renk dengesi | yoğunluk ≤ 0.3 renk kayması | Gölge (1−L)², vurgu L² ağırlığı; denge ±0.25 |
 
 Filtre tarifleri (`presets.js`) aynı kaydırıcı adlarını kullanır; ek olarak `mono` (kanal ağırlıklı siyah-beyaz)
-ve `mixer` (3×3). Varsayılan yoğunluk renk filtrelerinde 80, S-B ve efektlerde 100.
+ve `mixer` (3×3). Varsayılan yoğunluk renk filtrelerinde 80, kamera filtrelerinde 90, S-B ve efektlerde 100.
 Görsel kontrol: `node tests/run.mjs` → `tests/out/filtreler.png`, `tests/out/ayarlar.png`.
+
+### 5.1 Kamera filtreleri ve ekler (2026-11-22, sürüm 0.2)
+
+Kullanıcı, Meitu telefon uygulamasındaki ücretli kamera filtrelerinin (ör. “Canon G7X”, CCD) ücretsiz
+karşılıklarını istedi; hedef “orijinalin tıpatıp aynısı”. Meitu’nun filtre dosyaları kullanılmaz: Meitu’dan
+gelen filtreler §5.2’deki gibi ölçülerek, diğerleri (CCD) gerçek kameranın karakterine göre ayarlanır.
+
+Renk tarifine ek olarak `extras` (0..1, yoğunlukla ölçeklenir), develop gölgelendiricisinde:
+
+| Ek | Uygulama |
+|---|---|
+| `bloom`, `threshold` | Rehber doku + 8 halka örneği (~%3 yarıçap), eşik üstü parlak bölgeler ekran karışımıyla |
+| `halation` | Aynı kaynaktan kırmızı-turuncu hale (film) |
+| `ca` | Kırmızı ve mavi kanal merkezden zıt yönlere kayar (renk kayması) |
+| `flash` | Ortası aydınlanır, kenarlara doğru düşer |
+| `soft` | 4 komşu ortalaması; yarıçap görüntüye orantılı (uzun kenarın %0,06’sı) |
+| `noise` | Piksel düzeyinde renkli sensör gürültüsü, gölgelerde güçlü |
+| `leak` | `{ color, at, size, amount }` ışık sızması (Gauss leke + gürültü) |
+| `date` | Tarih damgası varsayılan olarak açık |
+
+Tarih damgası ekran kartı dışında çizilir: önizlemede sahne üstündeki `.stamp-ov` kanvası, çıktıda aracın
+`apply()` sonucundaki `post(canvas)` kancası (`app.applyTool` bunu `renderImage` sonrası çağırır).
+Tarih: EXIF DateTimeOriginal → dosya tarihi → bugün; oturumda `meta.photoDate` olarak saklanır.
+Biçim `'26 11 22` (yıl, ay, gün). Kullanıcı düğmeye dokunduysa seçimi filtre değişince korunur.
+
+### 5.2 Meitu filtrelerinin ölçülmesi (2026-11-22, sürüm 0.3)
+
+Veri (kullanıcının `Desktop\meitu-ekran` klasörü, depoda değil): filtresiz `referans foto.jpeg` (960×1280) ve
+Meitu’nun aynı fotoğraftaki filtre önizlemelerinin ekran görüntüleri (premium üyelik olmadığı için yalnız
+küçük önizlemeler; ~128 px, WhatsApp sıkıştırmalı). Araçlar: `tools/meitu-olcum/` (README’si orada).
+
+Yöntem:
+1. Hizalama: önizlemeler fotoğrafın **tam ortadaki karesini** gösteriyor (x=0, y=160, kenar 960; korelasyon ≈0,99).
+2. Referans 128 ızgaraya alan ortalamasıyla indirilir; iki taraf 3×3 hücreyle yumuşatılır; rozet ve köşeler maskelenir.
+3. Motorun sırası taklit edilerek (netlik → son tablo → vinyet) parametreler koordinat inişiyle en küçük RGB
+   farkına oturtulur: R/G/B eğrileri (x = 0, .15, .3, .5, .7, .85, 1), doygunluk, 7 HSL değeri (±50, büyüklük
+   cezalı; tek fotoğrafta az pikselli bant uç değere kaçmasın), netlik, vinyet.
+4. Önizlemelerin ortak bulanıklığı ölçümün kendisidir: DSLR ve Glowy Flash’ta bulunan netlik (−14,1) hepsinden düşülür.
+5. Doğrulama: referans, uygulamanın WebGL motoruyla işlenip aynı kesitte Meitu önizlemesiyle karşılaştırılır.
+
+Sonuç (uygulamanın motoruyla, ortalama ΔE; ölçüm gürültüsü ≈2):
+
+| Filtre | Filtresiz | Bizim | Not |
+|---|---|---|---|
+| Flash Film | 6,8 | 3,1 | soğuk açık tonlar, kontrast |
+| DSLR | 6,9 | 2,7 | nötr beyaz dengesi, doygunluk −14 |
+| HDF | 9,4 | 3,1 | açılmış mavimsi gölgeler, pus (netlik −35) |
+| Glowy Flash | 2,6 | 1,8 | çok hafif |
+| Hard Flash | 6,1 | 5,0 | Meitu ışığı **yüze** veriyor (yüz algılama); ten parlaklığıyla (turuncu L +24) yaklaşıldı |
+| G7x | 8,1 | 3,3 | güçlü S-eğrisi, soğuk beyazlar, yumuşaklık (netlik −25) |
+
+Sınırlar: 128 px önizlemede gren, keskinlik ve parlama dokusu ölçülemez; tam çözünürlüklü önizleme gelirse
+yeniden ölçülmeli. Yüz algılama eklenince Hard Flash yüz merkezli flaşa geçmeli (serbest konumla ölçülen:
+yüz üstünde, yarıçap ≈0,22, miktar ≈0,31; ΔE 5,0 → ≈4,8 ve başka fotoğraflarda daha doğru).
+Sıradaki adaylar (ana sayfada görülen adlar): Fuji XT30, Digicam, Moon Light, Food, Brighten, Kırmızı Işık,
+Gece Görünümü; aynı referans fotoğraftaki önizlemeleri gerekiyor.
 
 ## 6. Geometri (js/core/geometry.js)
 
