@@ -33,5 +33,12 @@ etkiler de ölçülebilir:
 4. Tarifleri `presets.js`’e işle, sonra `node tam-dogrula.mjs g7x.jpeg g7x` → uygulamanın içinden ΔE ve
    yakın plan karşılaştırmaları.
 
+Daha ayrıntılı “v2” (ör. G7X v2; uzak/yakın/yüz tarifleri + renk düzeltme ızgaraları + derinliğe göre ışık):
+
+5. `node v2-oturt.mjs g7x.jpeg 0.7` → 2. adımın modelinden başlar; `olcum/g7x-v2-tarif.txt` doğrudan
+   `presets.js` → `MEITU` dizisine konur. İkinci değer: Meitu’nun görünümü hangi yoğunlukta yakalansın
+   (0.7 → uygulamada %70 = Meitu, %100 daha güçlü).
+6. `node tam-dogrula.mjs g7x.jpeg g7xv2` → filtrenin varsayılan yoğunluğunda ΔE.
+
 Çıktılar kişisel fotoğraf içerir; bu yüzden proje klasörüne değil, ekran görüntülerinin yanına (`olcum/`)
-yazılır. Yöntem ve sonuçlar: `GELISTIRME.md` §5.2–5.3.
+yazılır. Yöntem ve sonuçlar: `GELISTIRME.md` §5.2–5.3 ve §5.5.

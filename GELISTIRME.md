@@ -92,9 +92,11 @@ Yeni araç eklemek: `js/tools/` altına dosya, `app.js` → `TOOLS` (ve istenirs
 - Kaynak fotoğraf mip seviyeli `RGBA8` doku. Önizleme küçültmesi mip ile, örnekler `textureGrad` ile.
 - **Rehber doku:** kaynağın 384 px’e küçültülüp Gauss (σ=6) ile bulanıklaştırılmış kopyası. Vurgular,
   gölgeler ve netlik bunu yerel ortalama olarak kullanır (düz ton eğrisi yerine; yerel kontrast korunur).
-- **Renk tabloları:** 33³ `RGBA16F` 3B doku × 2. Ön tablo: beyaz dengesi + pozlama (doğrusal ışıkta). Son tablo:
-  ayar zinciri ya da filtre tarifi. JS’te hesaplanır (~4 ms), kaydırıcı her değiştiğinde yeniden yüklenir.
-- **spec** (çizim tarifi): `{ source, matrix, outW, outH, pre, post, postAmount, tone, fx, seed, effect, outside }`.
+- **Renk tabloları:** 33³ `RGBA16F` 3B doku × 4. Ön tablo: beyaz dengesi + pozlama (doğrusal ışıkta). Son tablo:
+  ayar zinciri ya da filtre tarifi. `fg` (derinlikle yakın plan) ve `face` (yüz elipsi) yalnız ölçülmüş
+  kamera filtrelerinde. JS’te hesaplanır (~4 ms), kaydırıcı her değiştiğinde yeniden yüklenir.
+- **spec** (çizim tarifi): `{ source, matrix, outW, outH, pre, post, postAmount, tone, fx, seed, effect, outside,
+  glow, lens, leak, flashAt, depthMix, depthGain, faceMix }`.
   `matrix`: çıktı (0..1) → kaynak doku koordinatı, 3×3 sütun öncelikli (kırpma/döndürme/perspektif).
 - **Çıktı:** 2048’lik karolar halinde ara dokuya çizilir, `readPixels` ile okunup 2B kanvasa `putImageData`.
   Görünen tuval yeniden boyutlanmaz, bellek tepe noktası sınırlı kalır.
@@ -208,6 +210,7 @@ düşürüyor ama yüzü Meitu’dakinden yumuşak gösterdiği için kullanılm
 
 Yeni bir tam çözünürlüklü örnek gelirse: `node derinlik.mjs` → `node tam-oturt.mjs <dosya>` →
 `node yuz-flas.mjs <dosya>` → tarifleri `presets.js`’e işle → `node tam-dogrula.mjs <dosya> <kimlik>`.
+Daha yakın “v2” için ayrıca `node v2-oturt.mjs <dosya> 0.7` (§5.5).
 
 ### 5.4 Cihazda yapay zekâ
 
@@ -224,6 +227,41 @@ Yeni bir tam çözünürlüklü örnek gelirse: `node derinlik.mjs` → `node ta
 - Hız yetmezse: WebGPU sürümü (`ort.webgpu.min.mjs` + 27 MB `asyncify.wasm`, iOS 26+).
 Sıradaki adaylar (ana sayfada görülen adlar): Fuji XT30, Digicam, Moon Light, Food, Brighten, Kırmızı Işık,
 Gece Görünümü; aynı referans fotoğraftaki önizlemeleri gerekiyor.
+
+### 5.5 G7X v2 — ayrıntılı oturtma, Meitu = %70 (sürüm 0.4.1)
+
+Kullanıcı isteği: Meitu’ya olabildiğince yakın yeni bir “G7X v2”; Meitu’nun görünümü **%70 yoğunlukta**
+yakalansın, yoğunluk daha da artabilsin. Eski G7x olduğu gibi duruyor (karşılaştırma için).
+
+Kalan farkın tanısı (v1, örneklem içi üst sınırlar, ortalama ΔE 3,80 / yüz 5,57):
+- Yakın/uzak bölgelere renk başına serbest düzeltme → 3,27; yalnız yüze ayrı renk → yüz 4,76.
+- Keskinleştirme her miktarda kötüleştiriyor (Meitu inceltmiyor); derinliğe göre ışıkta küçük eğilimler var.
+
+Model (motorda, `presets.js` → `g7xv2`):
+- Uzak / yakın / yüz için ayrı tarif + her birine **5³ renk düzeltme ızgarası** (`extras.grid`,
+  `depth.grid`, `face.grid`; tabloya pişirilirken `sampleGrid` ile eklenir).
+- **Yüz bölgesi** (`extras.face`): algılanan yüzün çevresinde yumuşak elips (`uFaceBox`, yarıçap kutunun 0,55
+  katı) kendi tablosuyla (`uFaceLut`).
+- **Derinliğe göre ışık eğrisi** (`extras.depthGain`, 8 düğüm: `GK` = 0, .15, .3, .4, .5, .6, .75, 1;
+  oturtmada pürüzsüzlük cezalı); yüz flaşı (`faceFlash` 0,181 × 0,39); vinyet 12,5.
+- Oturtma 5×5 ortalamalı görüntülerde (doku ve JPEG izi dışarıda): uzamsal değerler ve yüz tarifi koordinat
+  inişiyle, ızgaralar doğrusal en küçük karelerle (komşu farkı + büyüklük cezalı), 3 tur.
+
+**%70 ölçeği (`extras.meituAt: 0.7`):** tablolar T yerine `c + (T(c) − c) / 0.7` ile pişirilir (0..1 dışına
+taşabilir; `RGBA16F`, `bakeLut` kenetlemez), uzamsal etkiler × 1/0.7, ışık eğrisi `1 + (g − 1) / 0.7`.
+Yoğunluk a iken sonuç `c + a/0.7 · (Meitu − c)`: %70 = ölçülen görünüm, %100 ≈ 1,43 kat. Varsayılan yoğunluk 70.
+
+Sonuç (uygulamanın içinden, %70, tüm görüntü; v1 → v2): ortalama **ΔE 3,82 → 3,22**, ortanca 2,61 → 1,95,
+%90 8,30 → 7,48 (oturtmada yüz 5,7 → 4,4). %100’de kırpılan piksel %0,22 (Meitu %0,19), %70 ile aynı.
+Sınır: tek fotoğrafa oturtuldu; ızgaralar bu fotoğrafta bulunmayan renklerde komşularından yumuşak devam eder.
+Başka sahnelerde sapma olursa yeni tam boy örneklerle yeniden oturtulmalı (`node v2-oturt.mjs`).
+
+Yakın/uzak sınırları (piksellerin %6’sı, hatanın %11’i; ΔE 6,1, dışı 3,05): yakın bir nesnenin hemen
+arkasındaki uzak alan ince bir şerit halinde aydınlık kalıyor (ör. lamba kubbesinin altındaki deniz; v1’de de var).
+- `depthAt` komşuluğunu büyütmek (5×5, 7×7, daha ince mip, daha keskin renk ağırlığı) fark etmiyor (5,91 → 5,88):
+  şerit büyütmeden değil, derinlik haritasının kendisinden.
+- Derinlik modelinin kısa kenarı 280 → 392 → 518: masaüstünde 0,6 / 1,4 / 3,1 sn; geçiş bölgesinde ΔE
+  5,91 → 5,33 → 5,28. Şerit inceliyor ama kaybolmuyor. iPhone süresi ölçülmediği için 280’de kalındı ⚑.
 
 ## 6. Geometri (js/core/geometry.js)
 
@@ -286,6 +324,10 @@ sınırları, galeri/kamera seçici, paylaşım menüsü, ana ekran modu, dokunm
 14. **Derinlik dokusu (R8)** yüklenirken `UNPACK_ALIGNMENT = 1` olmalı (satırlar 4’ün katı olmayabilir).
 15. Derinlik ve yüzler **yalnız güncel görüntüye** aittir; `replaceCurrent` ve `openDoc` bunları sıfırlar.
 16. GitHub’a tarayıcıdan yükleme 25 MB ile sınırlı; derinlik modeli 26 MB → GitHub Desktop ile gönderilmeli.
+17. **`meituAt`’lı filtrelerin tabloları 0..1 dışına taşar:** `bakeLut` kenetlememeli, tablo `RGBA16F` kalmalı;
+    yoksa %70’te ölçülen görünüm tutmaz.
+18. **Küçük resimler fotoğrafın ortadaki karesini gösterir:** yüze bağlı konumlar (`flashAt`, `faceMix`)
+    `toSquare` ile o karenin koordinatına taşınır.
 
 ## 9. Yayın kontrol listesi
 

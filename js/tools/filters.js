@@ -4,7 +4,7 @@
 // üretilir.
 import { createSlider } from '../widgets/slider.js';
 import { el, escapeHtml, icon, busy, toast } from '../ui.js';
-import { compileLook, bakeLut, applyLook, lutLength } from '../core/color.js';
+import { compileLook, bakeLut, applyLook, lutLength, sampleGrid } from '../core/color.js';
 import { FILTERS, FILTER_CATEGORIES, EFFECTS, findFilter } from '../core/presets.js';
 import { defaultSpec } from '../gl/engine.js';
 import { drawStamp, stampText } from '../stamp.js';
@@ -23,6 +23,7 @@ export function filtersTool(host, { category = null } = {}) {
   const st = { id: null, amounts: new Map(), date: false, dateTouched: false };
   const lutBuf = new Float32Array(lutLength());
   const fgBuf = new Float32Array(lutLength());
+  const faceBuf = new Float32Array(lutLength());
   const seed = Math.random() * 1000;
   let compiled = null;
   let ui = null;
@@ -47,36 +48,65 @@ export function filtersTool(host, { category = null } = {}) {
       return s;
     }
     const sp = k.spatial;
+    const x = f.extras;
+    // meituAt: ölçülen görünüm bu yoğunlukta yakalanır; konuma bağlı etkiler
+    // de aynı oranda büyütülür (tablolar bake() içinde ölçeklenir).
+    const a = amount * (x?.meituAt ? 1 / x.meituAt : 1);
     s.post = true;
     s.postAmount = amount;
-    s.tone = [sp.highlights * amount, sp.shadows * amount, sp.clarity * amount];
-    s.fx = [sp.sharpen * amount, sp.grain * amount, sp.vignette * amount];
+    s.tone = [sp.highlights * a, sp.shadows * a, sp.clarity * a];
+    s.fx = [sp.sharpen * a, sp.grain * a, sp.vignette * a];
     s.seed = seed;
-    const x = f.extras;
     if (x) {
-      s.glow = [(x.bloom || 0) * amount, (x.halation || 0) * amount, x.threshold ?? 0.62];
-      s.lens = [(x.ca || 0) * amount, (x.flash || 0) * amount, (x.soft || 0) * amount, (x.noise || 0) * amount];
-      if (x.leak) s.leak = { ...x.leak, amount: x.leak.amount * amount };
+      s.glow = [(x.bloom || 0) * a, (x.halation || 0) * a, x.threshold ?? 0.62];
+      s.lens = [(x.ca || 0) * a, (x.flash || 0) * a, (x.soft || 0) * a, (x.noise || 0) * a];
+      if (x.leak) s.leak = { ...x.leak, amount: x.leak.amount * a };
       if (x.faceFlash) {
-        s.lens[1] = x.faceFlash.amount * amount;
+        s.lens[1] = x.faceFlash.amount * a;
         s.flashAt = host.ai.flashAt(x.faceFlash.size);
       }
-      // Derinlik haritası henüz yoksa motor geçişi kendiliğinden atlar.
+      // Derinlik haritası henüz yoksa motor geçişi ve ışık eğrisini atlar.
       if (x.depth) s.depthMix = { center: x.depth.center, width: x.depth.width };
+      if (x.depthGain) {
+        const sc = x.meituAt ? 1 / x.meituAt : 1;
+        s.depthGain = { values: x.depthGain.map((g) => 1 + (g - 1) * sc), amount };
+      }
+      const box = x.face ? host.ai.faceBox() : null;
+      if (box) s.faceMix = { box };
     }
     return s;
   }
 
-  // Ana tarifin (ve varsa yakın plan tarifinin) tablolarını motora yükler.
+  // Tarif (+ varsa düzeltme ızgarası) renk işlevi. scale > 1: ölçülen
+  // dönüşüm büyütülür; tablo 0..1 dışına taşabilir (RGBA16F), yoğunluk
+  // 1/scale olduğunda ölçülen görünüm tam yakalanır.
+  function lutFn(look, grid, scale) {
+    const k = compileLook(look);
+    const o = new Float64Array(3);
+    const g = new Float64Array(3);
+    const n = grid ? Math.round(Math.cbrt(grid.length / 3)) : 0;
+    return (c) => {
+      o.set(c);
+      applyLook(c, k);
+      if (grid) {
+        sampleGrid(grid, n, o, g);
+        c[0] += g[0];
+        c[1] += g[1];
+        c[2] += g[2];
+      }
+      if (scale !== 1) for (let q = 0; q < 3; q++) c[q] = o[q] + (c[q] - o[q]) * scale;
+    };
+  }
+
+  // Ana tarifin (ve varsa yakın plan ile yüz tariflerinin) tablolarını yükler.
   function bake(f) {
-    const k = compileLook(f.look);
-    const luts = { post: bakeLut((c) => applyLook(c, k), lutBuf) };
-    if (f.extras?.depth) {
-      const kf = compileLook(f.extras.depth.look);
-      luts.fg = bakeLut((c) => applyLook(c, kf), fgBuf);
-    }
+    const x = f.extras || {};
+    const sc = x.meituAt ? 1 / x.meituAt : 1;
+    const luts = { post: bakeLut(lutFn(f.look, x.grid, sc), lutBuf) };
+    if (x.depth) luts.fg = bakeLut(lutFn(x.depth.look, x.depth.grid, sc), fgBuf);
+    if (x.face) luts.face = bakeLut(lutFn(x.face.look, x.face.grid, sc), faceBuf);
     host.engine.setLuts(luts);
-    return k;
+    return compileLook(f.look);
   }
 
   function loadLut(f) {
@@ -90,8 +120,8 @@ export function filtersTool(host, { category = null } = {}) {
     const x = f?.extras;
     if (!x) return true;
     const jobs = [];
-    if (x.depth && !host.ai.depthReady) jobs.push(['depth', 'Derinlik hesaplanıyor…']);
-    if (x.faceFlash && !host.ai.facesReady) jobs.push(['faces', 'Yüz aranıyor…']);
+    if ((x.depth || x.depthGain) && !host.ai.depthReady) jobs.push(['depth', 'Derinlik hesaplanıyor…']);
+    if ((x.faceFlash || x.face) && !host.ai.facesReady) jobs.push(['faces', 'Yüz aranıyor…']);
     if (!jobs.length) return true;
     busy.show('Yapay zekâ hazırlanıyor…');
     try {
@@ -225,6 +255,18 @@ export function filtersTool(host, { category = null } = {}) {
     return b;
   }
 
+  // Küçük resim fotoğrafın ortasındaki kareyi gösterir: yüze bağlı flaş ve
+  // yüz bölgesi de o karenin koordinatlarına taşınır.
+  function toSquare(spec) {
+    const side = Math.min(host.W, host.H);
+    const sx = side / host.W;
+    const sy = side / host.H;
+    const fa = spec.flashAt;
+    spec.flashAt = [(fa[0] - (1 - sx) / 2) / sx, (fa[1] - (1 - sy) / 2) / sy, (fa[2] * Math.hypot(host.W, host.H)) / (side * Math.SQRT2)];
+    const b = spec.faceMix?.box;
+    if (b) spec.faceMix = { box: [(b[0] - (1 - sx) / 2) / sx, (b[1] - (1 - sy) / 2) / sy, b[2] / sx, b[3] / sy] };
+  }
+
   function renderNoneThumb(btn) {
     const c = host.engine.renderImage({ ...defaultSpec(host.W, host.H), matrix: squareMatrix(host.W, host.H) }, THUMB, THUMB);
     btn.querySelector('.fthumb__img').append(c);
@@ -251,6 +293,7 @@ export function filtersTool(host, { category = null } = {}) {
         const k = f.fx ? null : bake(f);
         const spec = filterSpec(f, f.amount / 100, k);
         spec.matrix = matrix;
+        toSquare(spec);
         const c = host.engine.renderImage(spec, THUMB, THUMB);
         if (f.extras?.date) drawStamp(c, date, { scale: 2.2 });
         btn.querySelector('.fthumb__img').replaceChildren(c);

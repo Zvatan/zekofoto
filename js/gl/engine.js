@@ -44,6 +44,7 @@ function gaussTaps(sigma) {
 }
 
 const GAUSS = gaussTaps(GUIDE_SIGMA);
+const ONES8 = new Float32Array(8).fill(1);
 
 export function defaultSpec(w, h) {
   return {
@@ -63,6 +64,8 @@ export function defaultSpec(w, h) {
     leak: null, // { color: [r, g, b], at: [x, y], size, amount }
     flashAt: [0.5, 0.5, 1], // flaş merkezi (çıktı 0..1) ve yarıçapı
     depthMix: null, // { center, width }: yakın plan "fg" tablosuyla (derinlik haritası gerekir)
+    depthGain: null, // { values: [8], amount }: derinliğe göre ışık eğrisi (derinlik haritası gerekir)
+    faceMix: null, // { box: [cx, cy, rx, ry] }: yüz elipsi "face" tablosuyla
     effect: null,
     outside: [0.08, 0.08, 0.09],
   };
@@ -112,6 +115,7 @@ export class Engine {
     this.lutPre = this._lut3d();
     this.lutPost = this._lut3d();
     this.lutFg = this._lut3d();
+    this.lutFace = this._lut3d();
     this.depthTex = null;
     this.blank = this._tex2d(1, 1, new Uint8Array([0, 0, 0, 255]));
   }
@@ -287,11 +291,12 @@ export class Engine {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  // data: Float32Array (LUT_SIZE³ × 4) ya da null (kapalı). fg: yakın plan tablosu.
-  setLuts({ pre, post, fg } = {}) {
+  // data: Float32Array (LUT_SIZE³ × 4) ya da null (kapalı). fg: yakın plan,
+  // face: yüz bölgesi tablosu.
+  setLuts({ pre, post, fg, face } = {}) {
     const gl = this.gl;
     const n = LUT_SIZE;
-    for (const [data, tex] of [[pre, this.lutPre], [post, this.lutPost], [fg, this.lutFg]]) {
+    for (const [data, tex] of [[pre, this.lutPre], [post, this.lutPost], [fg, this.lutFg], [face, this.lutFace]]) {
       if (!data) continue;
       gl.bindTexture(gl.TEXTURE_3D, tex);
       gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, n, n, n, gl.RGBA, gl.FLOAT, data);
@@ -366,10 +371,19 @@ export class Engine {
       gl.bindTexture(gl.TEXTURE_3D, this.lutFg);
       gl.uniform1i(loc.uFg, 5);
       gl.uniform3f(loc.uDepthMix, dm ? 1 : 0, dm ? dm.center : 0, dm ? Math.max(0.001, dm.width) : 0);
-      if (dm) {
+      if (this.depthTex) {
         const m = this.depthMap;
         gl.uniform3f(loc.uDepthTex, m.w, m.h, Math.max(0, Math.log2(src.w / m.w)));
       }
+      const dg = spec.source !== 'compare' && this.depthTex ? spec.depthGain : null;
+      gl.uniform1fv(loc.uGain, dg ? dg.values : ONES8);
+      gl.uniform1f(loc.uGainOn, dg ? dg.amount : 0);
+      const fb = spec.source !== 'compare' ? spec.faceMix?.box : null;
+      gl.activeTexture(gl.TEXTURE6);
+      gl.bindTexture(gl.TEXTURE_3D, this.lutFace);
+      gl.uniform1i(loc.uFaceLut, 6);
+      gl.uniform1f(loc.uFaceOn, fb ? 1 : 0);
+      gl.uniform4f(loc.uFaceBox, ...(fb || [0.5, 0.5, 1, 1]));
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

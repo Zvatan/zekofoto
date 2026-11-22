@@ -12,7 +12,8 @@ Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
   vurgular, gölgeler, beyazlar, siyahlar, netlik, keskinlik, soldurma, gren, vinyet, **eğriler** (RGB/K/Y/M),
   **HSL** (8 renk), **renk dengesi** (gölge/orta ton/vurgu).
 - **Filtreler:** Kamera kategorisi: Meitu'daki Flash Film, DSLR, HDF, Glowy Flash, Hard Flash ve G7x
-  filtrelerinin ölçülerek yapılmış karşılıkları ve CCD (parlama, renk kayması, dijital gürültü, tarih damgası);
+  filtrelerinin ölçülerek yapılmış karşılıkları, **G7X v2** (Meitu'nun G7X'ine daha yakın; %70 yoğunlukta
+  Meitu'nun görünümü, %100'de daha güçlü) ve CCD (parlama, renk kayması, dijital gürültü, tarih damgası);
   39 renk filtresi (Portre, Film, Retro, Yemek, Manzara, Siyah-Beyaz) ve 8 sanatsal efekt
   (karakalem, renkli kalem, yağlı boya, suluboya, çizgi roman, pop art, neon, kabartma); yoğunluk ayarlı.
 - **Tarih damgası:** eski dijital kameralardaki turuncu tarih; çekim tarihi fotoğrafın EXIF bilgisinden okunur.
@@ -82,6 +83,8 @@ Gereksinim: iOS 15 ve üzeri (WebGL2).
 10. **Yapay zekâ (✦):** Filtreler → Kamera → G7x: ilk seferde “Yapay zekâ modeli indiriliyor… %” ve
     “Derinlik hesaplanıyor…” görünüyor; kişi ve masa aydınlık, deniz/dağ koyu. Süreyi not edin (iPhone 12–14’te
     birkaç saniye beklenir). Hard Flash’ta ışık yüzün üstünde. Uçak modunda (bir kez indirildikten sonra) da çalışıyor.
+11. **G7X v2:** yoğunluk 70 ile açılıyor; Meitu’nun G7X’iyle aynı fotoğrafta yan yana bakınca renkler ve
+    ışık çok yakın; 100’e çekince daha güçlü, yüzde ya da gökyüzünde kırılma/leke yok.
 
 ## Geliştirme
 

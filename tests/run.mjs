@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   compileLook, applyLook, applyPre, applyPost, bakeLut, sampleLut, curveTable, bandWeights,
-  neutralAdjust, HSL_BANDS, LUT_SIZE,
+  neutralAdjust, HSL_BANDS, LUT_SIZE, sampleGrid,
 } from '../js/core/color.js';
 import { FILTERS, FILTER_CATEGORIES, EFFECTS } from '../js/core/presets.js';
 import {
@@ -152,6 +152,21 @@ test('3B tablo örneklemesi doğrudan hesapla uyuşur', () => {
   assert.ok(worst < 0.03, `en kötü fark ${worst}`);
 });
 
+test('düzeltme ızgarası düğümlerde değerini, arada doğrusal karışımı verir', () => {
+  const n = 3;
+  const grid = new Float32Array(n * n * n * 3);
+  // yalnız kırmızı kanalda, r düğümüne göre artan düzeltme: 0, 0.1, 0.2
+  for (let z = 0; z < n; z++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) grid[((z * n + y) * n + x) * 3] = x * 0.1;
+  const out = [0, 0, 0];
+  sampleGrid(grid, n, [0, 0.3, 0.9], out);
+  near(out[0], 0, 1e-9);
+  sampleGrid(grid, n, [0.5, 0.2, 0.1], out);
+  near(out[0], 0.1, 1e-6);
+  sampleGrid(grid, n, [0.75, 0.6, 0.6], out);
+  near(out[0], 0.15, 1e-6);
+  near(out[1], 0, 1e-9);
+});
+
 // --- filtreler -----------------------------------------------------------
 
 console.log('Filtreler');
@@ -194,8 +209,17 @@ test('kamera eklerinin değerleri geçerli', () => {
   assert.ok(cams.length >= 1);
   for (const f of cams) {
     for (const k of Object.keys(f.extras)) {
-      assert.ok([...keys, 'threshold', 'leak', 'date', 'faceFlash', 'depth'].includes(k), `${f.id}: bilinmeyen ek ${k}`);
+      assert.ok([...keys, 'threshold', 'leak', 'date', 'faceFlash', 'depth', 'depthGain', 'face', 'grid', 'meituAt'].includes(k), `${f.id}: bilinmeyen ek ${k}`);
     }
+    const gridOk = (g) => !g || (g.length === 375 && g.every((v) => Number.isFinite(v) && Math.abs(v) < 0.3));
+    assert.ok(gridOk(f.extras.grid) && gridOk(f.extras.depth?.grid) && gridOk(f.extras.face?.grid), `${f.id}: ızgara 5³×3 ve ölçülü olmalı`);
+    if (f.extras.meituAt) assert.ok(f.extras.meituAt > 0.3 && f.extras.meituAt <= 1 && f.amount <= 100, `${f.id}.meituAt`);
+    if (f.extras.depthGain) {
+      assert.equal(f.extras.depthGain.length, 8);
+      assert.ok(f.extras.depthGain.every((g) => g > 0.5 && g < 1.6), `${f.id}.depthGain`);
+      assert.ok(f.ai, `${f.id} yapay zekâ işaretli olmalı`);
+    }
+    if (f.extras.face) assert.ok(f.ai && f.extras.face.look, `${f.id}.face`);
     if (f.extras.faceFlash) {
       const ff = f.extras.faceFlash;
       assert.ok(ff.amount > 0 && ff.amount <= 1 && ff.size > 0, `${f.id}.faceFlash`);

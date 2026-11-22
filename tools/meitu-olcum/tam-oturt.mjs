@@ -150,7 +150,7 @@ function descend(which, rounds = 50) {
 const t0 = Date.now();
 // Önceki oturtmadan başla (varsa); yalnız yakın bölge ve geçiş yeniden ayarlanır.
 try {
-  const prev = JSON.parse(readFileSync(join(OUT, `-model.json`), 'utf8'));
+  const prev = JSON.parse(readFileSync(join(OUT, `${NAME}-model.json`), 'utf8'));
   Object.assign(M, prev);
   console.log('önceki modelden başlanıyor');
   descend(['fg'], 40);
@@ -189,7 +189,7 @@ console.log(`ΔE: filtresiz ${(de0 / S.length).toFixed(2)} → bizim ${(de1 / S.
 const sorted = Float32Array.from(deMap).sort();
 console.log(`ΔE dağılımı: %50 ${sorted[Math.floor(sorted.length * 0.5)].toFixed(2)}, %90 ${sorted[Math.floor(sorted.length * 0.9)].toFixed(2)}, %99 ${sorted[Math.floor(sorted.length * 0.99)].toFixed(2)}`);
 
-writeFileSync(join(OUT, `-model.json`), JSON.stringify(M, null, 1));
+writeFileSync(join(OUT, `${NAME}-model.json`), JSON.stringify(M, null, 1));
 
 // Görsel: tahmin edilen tam görüntü (3 pikselde bir örneklerden) ve hata haritası.
 {
@@ -203,6 +203,6 @@ writeFileSync(join(OUT, `-model.json`), JSON.stringify(M, null, 1));
     const e = Math.min(255, deMap[n] * 18);
     err[o] = e; err[o + 1] = e; err[o + 2] = e; err[o + 3] = 255;
   });
-  writeFileSync(join(OUT, `-tahmin.png`), encodePng(img, w, h));
-  writeFileSync(join(OUT, `-hata.png`), encodePng(err, w, h));
+  writeFileSync(join(OUT, `${NAME}-tahmin.png`), encodePng(img, w, h));
+  writeFileSync(join(OUT, `${NAME}-hata.png`), encodePng(err, w, h));
 }

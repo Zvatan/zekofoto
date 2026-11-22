@@ -1,4 +1,4 @@
-﻿// Uygulama denetleyicisi: ana ekran, düzenleyici, araçlar, geçmiş ve kayıt.
+// Uygulama denetleyicisi: ana ekran, düzenleyici, araçlar, geçmiş ve kayıt.
 import { Engine, defaultSpec } from './gl/engine.js';
 import { Viewer } from './viewer.js';
 import { History } from './history.js';
@@ -12,7 +12,7 @@ import { cropTool } from './tools/crop.js';
 import { estimateDepth } from './ai/depth.js';
 import { detectFaces } from './ai/faces.js';
 
-export const VERSION = '0.4.0';
+export const VERSION = '0.4.1';
 const SCREENS = ['home', 'editor'];
 const COMPARE_SIDE = 2048;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -113,6 +113,16 @@ const host = {
         d.ai.facesP.catch(() => (d.ai.facesP = null));
       }
       return d.ai.facesP;
+    },
+    // Yüz bölgesi elipsi (gölgelendiricideki uFaceBox): en büyük yüzün ortası,
+    // yarıçaplar kutunun 0,55 katı; çıktı koordinatında. Yüz yoksa null.
+    faceBox() {
+      const d = app.doc;
+      const f = d.ai.faces?.[0];
+      if (!f) return null;
+      const W = d.canvas.width;
+      const H = d.canvas.height;
+      return [(f.x + f.w / 2) / W, (f.y + f.h / 2) / H, (0.55 * f.w) / W, (0.55 * f.h) / H];
     },
     // Flaşın merkezi ve yarıçapı (gölgelendiricideki uFlashAt): en büyük yüzün
     // ortası, yarıçap yüz yüksekliği × size. Yüz yoksa kadrajın ortası.

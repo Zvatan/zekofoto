@@ -556,6 +556,28 @@ export function identityLut(out, n = LUT_SIZE) {
   return bakeLut(() => {}, out, n);
 }
 
+// Seyrek düzeltme ızgarası (n³ düğüm × 3 kanal, r en hızlı): girdi renginden
+// üç doğrusal örnekleme. Ölçülen filtrelerde tarifin üstüne eklenen ince
+// renk düzeltmesi için (bkz. presets.js → grid).
+export function sampleGrid(grid, n, c, out) {
+  const f = [0, 1, 2].map((k) => Math.min(n - 1.0001, Math.max(0, c[k] * (n - 1))));
+  const i0 = f.map(Math.floor);
+  const t = f.map((v, k) => v - i0[k]);
+  out[0] = out[1] = out[2] = 0;
+  for (let dz = 0; dz < 2; dz++) {
+    for (let dy = 0; dy < 2; dy++) {
+      for (let dx = 0; dx < 2; dx++) {
+        const w = (dx ? t[0] : 1 - t[0]) * (dy ? t[1] : 1 - t[1]) * (dz ? t[2] : 1 - t[2]);
+        const idx = ((i0[2] + dz) * n * n + (i0[1] + dy) * n + (i0[0] + dx)) * 3;
+        out[0] += grid[idx] * w;
+        out[1] += grid[idx + 1] * w;
+        out[2] += grid[idx + 2] * w;
+      }
+    }
+  }
+  return out;
+}
+
 // CPU üzerinde 3B tablo ile renk dönüştürme (üçlü doğrusal); testler ve küçük
 // önizlemeler için.
 export function sampleLut(lut, c, n = LUT_SIZE) {

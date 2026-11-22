@@ -125,6 +125,21 @@ uniform sampler2D uDepth;  // 0 uzak … 1 yakın (kaynak doku koordinatında)
 uniform sampler3D uFg;     // yakın plan için son tablo
 uniform vec3 uDepthMix;    // x: açık, y: geçiş merkezi, z: geçiş genişliği
 uniform vec3 uDepthTex;    // derinlik haritasının boyutu (x, y) ve kaynağın ona denk mip seviyesi
+uniform float uGain[8];    // derinliğe göre ışık eğrisi (düğümler: GK)
+uniform float uGainOn;     // eğrinin miktarı (filtre yoğunluğu; 0: kapalı)
+// Yüz bölgesi kendi tablosuyla (algılanan yüzün çevresinde yumuşak elips):
+uniform sampler3D uFaceLut;
+uniform vec4 uFaceBox;     // elips merkezi (x, y) ve yarıçapları (x, y), çıktı koordinatında
+uniform float uFaceOn;
+
+const float GK[8] = float[8](0.0, 0.15, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0);
+
+float depthGain(float d) {
+  for (int i = 0; i < 7; i++) {
+    if (d <= GK[i + 1]) return mix(uGain[i], uGain[i + 1], (d - GK[i]) / (GK[i + 1] - GK[i]));
+  }
+  return uGain[7];
+}
 
 // Derinlik haritası kaynaktan küçük: kenarları fotoğrafın kenarlarına oturtmak
 // için komşu derinlikler, renkleri bu pikselin rengine benzedikçe ağırlıklı
@@ -219,15 +234,25 @@ void main() {
     if (tone) g = lut(uPre, g);
   }
   if (tone) c = localTone(c, g);
+  float dd = -1.0;
   if (uLut.z > 0.5) {
     vec3 cp = lut(uPost, c);
     if (uDepthMix.x > 0.5) {
       // Yakın bölge kendi tablosuyla; geçiş derinlik haritasına göre yumuşak.
-      float d = depthAt(uv, s.rgb);
-      float w = smoothstep(uDepthMix.y - uDepthMix.z, uDepthMix.y + uDepthMix.z, d);
+      dd = depthAt(uv, s.rgb);
+      float w = smoothstep(uDepthMix.y - uDepthMix.z, uDepthMix.y + uDepthMix.z, dd);
       cp = mix(cp, lut(uFg, c), w);
     }
+    if (uFaceOn > 0.5) {
+      float fm = 1.0 - smoothstep(0.75, 1.1, length((gO - uFaceBox.xy) / uFaceBox.zw));
+      cp = mix(cp, lut(uFaceLut, c), fm);
+    }
     c = mix(c, cp, uPostAmt);
+  }
+  if (uGainOn > 0.0) {
+    // Flaş ışığı uzaklıkla kademeli değişir.
+    if (dd < 0.0) dd = depthAt(uv, s.rgb);
+    c *= 1.0 + uGainOn * (depthGain(dd) - 1.0);
   }
   if (uLens.y > 0.0) {
     // Flaş: merkezi (ör. algılanan yüz) aydınlanır, ışık uzaklaştıkça düşer.
