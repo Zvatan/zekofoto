@@ -4,8 +4,18 @@ Safari’de çalışan, “Ana Ekrana Ekle” ile bağımsız uygulama gibi aç�
 Apple Developer hesabı ve sunucu gerekmez; GitHub Pages üzerinde ücretsiz yayınlanır.
 Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
 
-## Özellikler (sürüm 0.4)
+## Özellikler (sürüm 0.5)
 
+- **Ana ekran:** büyük Düzenle ve Kamera düğmeleri, araç ızgarası (fotoğraf seçilince araç doğrudan açılır),
+  konu konu filtre koleksiyonları; iPad’de iki sütun.
+- **Çizim:** kalem, neon, fosforlu, kesik çizgi, gökkuşağı fırçaları ve silgi; renk, kalınlık, saydamlık.
+- **Metin:** birden çok yazı; sürükle, büyüt/döndür; 19 yazı tipi (Türkçe karakterli), renk, kontur, gölge,
+  etiket zemini, hizalama, saydamlık.
+- **Mozaik:** piksel, altıgen, bulanık, buzlu cam; fırça ve silgi.
+- **Bulanıklaştır:** Akıllı (portre modu, yapay zekâyla derinlik), Daire ve Doğrusal odak; ışık noktaları (bokeh).
+- **Silgi (✦):** istenmeyen nesnenin üstünü boya, yapay zekâ çevresine uygun doldursun.
+- **Arka plan (✦):** özne otomatik ayrılır; arka plan bulanık, renk/degrade, galeriden görsel ya da saydam (PNG);
+  fırçayla düzeltme.
 - **Düzenle:** kırpma (serbest, orijinal, 1:1, 4:5, 3:4, 2:3, 9:16, 16:9 …), sola/sağa 90°, yatay/dikey aynalama,
   ±45° açı düzeltme, dikey/yatay perspektif, yeniden boyutlandırma. Kırpma her zaman fotoğrafın içinde kalır.
 - **Ayarla:** otomatik iyileştirme, parlaklık, pozlama, kontrast, doygunluk, canlılık, sıcaklık, renk tonu,
@@ -18,15 +28,16 @@ Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
   (karakalem, renkli kalem, yağlı boya, suluboya, çizgi roman, pop art, neon, kabartma); yoğunluk ayarlı.
 - **Tarih damgası:** eski dijital kameralardaki turuncu tarih; çekim tarihi fotoğrafın EXIF bilgisinden okunur.
   CCD gibi filtrelerde kendiliğinden açılır, her filtreyle açılıp kapatılabilir.
-- **Cihazda yapay zekâ (✦ işaretli filtreler):** G7x derinlik tahminiyle yakını aydınlatıp uzağı karartır (flaşlı
-  kompakt kamera), Hard Flash ve G7x ışığı algılanan yüze verir. İlk kullanımda modeller bir kez indirilir
-  (yaklaşık 41 MB); sonra internetsiz çalışır. Fotoğraflar telefondan çıkmaz.
+- **Cihazda yapay zekâ (✦):** G7x derinlik tahminiyle yakını aydınlatıp uzağı karartır (flaşlı kompakt kamera),
+  Hard Flash ve G7x ışığı algılanan yüze verir; Silgi, Arka plan ve Portre modu da cihazda çalışır. Her model
+  ilk kullanımda bir kez indirilir (çalıştırıcı 14 MB; derinlik 26, yüz 1, silgi 28, kişi ayırma 7, genel
+  ayırma 44 MB); sonra internetsiz çalışır. Fotoğraflar telefondan çıkmaz.
 - Basılı tutunca önceki hal, iki parmakla ya da çift dokunuşla yakınlaştırma.
 - Geri al / yinele (25 adım); uygulama kapanırsa **kaldığın yerden devam**.
 - **Kaydet:** JPEG (yüksek/orta) ya da PNG; iOS paylaşım menüsünde “Görüntüyü Kaydet” ile Fotoğraflar’a.
 - Çevrimdışı çalışır.
 
-Sıradaki aşamalar: yazı ve süsleme, güzellik/rötuş, cihazda yapay zekâ araçları (bkz. [GELISTIRME.md](GELISTIRME.md)).
+Sıradaki aşamalar: sticker ve çerçeveler, güzellik/rötuş, diğer yapay zekâ araçları (bkz. [GELISTIRME.md](GELISTIRME.md)).
 
 ## GitHub Pages’te yayınlama
 
@@ -86,6 +97,14 @@ Gereksinim: iOS 15 ve üzeri (WebGL2).
 11. **G7X v2:** yoğunluk 70 ile açılıyor; Meitu’nun G7X’iyle aynı fotoğrafta yan yana bakınca renkler ve
     ışık çok yakın; 100’e çekince daha güçlü, yüzde ya da gökyüzünde kırılma/leke yok. Yakın nesnelerin
     (kişi, lamba) çevresinde hale ya da kesik çizgisi yok; arkalarındaki direk/duvar aydınlanmıyor.
+12. **Ana ekran:** koleksiyon kartlarında önizlemeler beliriyor; bir karta dokunup fotoğraf seçince Filtreler o
+    filtre seçili açılıyor; araç ızgarasından her araç açılıyor. iPad yatayda iki sütun.
+13. **Çizim / Mozaik:** tek parmakla çiziliyor, iki parmakla yakınlaştırılıyor (yarım çizgi kalmıyor); geri al/
+    yinele; ✓ sonrası kalınlık ve renkler aynı.
+14. **Metin:** klavye açılıyor; ğ ş ı İ ö ç ü yazı tiplerinde doğru; sürükleme, köşeden büyütme/döndürme, ×.
+15. **Bulanıklaştır:** Akıllı’da kişi net, arkası bulanık; dokunulan yer odak oluyor. Daire/Doğrusal sürükleniyor.
+16. **Silgi:** boyayıp bırakınca birkaç saniyede siliniyor; geri al çalışıyor; süreyi not edin.
+17. **Arka plan:** özne doğru ayrılıyor (kişide saç kenarları); renk, görsel, saydam (PNG kaydı) ve fırça.
 
 ## Geliştirme
 

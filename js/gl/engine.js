@@ -66,6 +66,12 @@ export function defaultSpec(w, h) {
     depthMix: null, // { center, width }: yakın plan "fg" tablosuyla (derinlik haritası gerekir)
     depthGain: null, // { values: [8], amount }: derinliğe göre ışık eğrisi (derinlik haritası gerekir)
     faceMix: null, // { box: [cx, cy, rx, ry] }: yüz elipsi "face" tablosuyla
+    // Mercek bulanıklığı: { mode: 1 derinlik | 2 daire | 3 doğrusal | 4 özne maskesi,
+    //   radius (uzun kenara oranla), bokeh, a: [x, y, r, geçiş], b: [cos, sin] ya da [odak, aralık] }
+    blur: null,
+    // Arka plan: { mode: 1 renk | 2 görsel | 3 saydam, a: [r, g, b], b: [r, g, b], dir: [x, y],
+    //   xf: [ölçekX, ölçekY, kaymaX, kaymaY] } (özne maskesi gerekir)
+    bg: null,
     effect: null,
     outside: [0.08, 0.08, 0.09],
   };
@@ -95,9 +101,13 @@ export class Engine {
       this.lost = false;
       this._init();
       if (this.depthMap) this.setDepth(this.depthMap);
+      if (this.matteMap) this.setMatte(this.matteMap);
+      if (this.bgSource) this.setBgImage(this.bgSource);
       this.onRestore?.();
     });
     this.depthMap = null;
+    this.matteMap = null;
+    this.bgSource = null;
     this._init();
   }
 
@@ -117,16 +127,14 @@ export class Engine {
     this.lutFg = this._lut3d();
     this.lutFace = this._lut3d();
     this.depthTex = null;
+    this.matteTex = null;
+    this.bgTex = null;
     this.blank = this._tex2d(1, 1, new Uint8Array([0, 0, 0, 255]));
   }
 
-  // Derinlik haritası (0 uzak … 255 yakın), güncel kaynak için. null: kaldır.
-  setDepth(map) {
+  // Tek kanallı (R8) harita dokusu: { w, h, data: Uint8Array }.
+  _r8(map) {
     const gl = this.gl;
-    this.depthMap = map;
-    if (this.depthTex) gl.deleteTexture(this.depthTex);
-    this.depthTex = null;
-    if (!map) return;
     const t = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, t);
     // Tek kanallı satırlar 4 baytın katı olmayabilir.
@@ -137,7 +145,56 @@ export class Engine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.depthTex = t;
+    return t;
+  }
+
+  // Derinlik haritası (0 uzak … 255 yakın), güncel kaynak için. null: kaldır.
+  setDepth(map) {
+    const gl = this.gl;
+    this.depthMap = map;
+    if (this.depthTex) gl.deleteTexture(this.depthTex);
+    this.depthTex = map ? this._r8(map) : null;
+  }
+
+  // Özne maskesi (255 = özne), güncel kaynak için. null: kaldır.
+  setMatte(map) {
+    const gl = this.gl;
+    this.matteMap = map;
+    if (this.matteTex) gl.deleteTexture(this.matteTex);
+    this.matteTex = map ? this._r8(map) : null;
+  }
+
+  // Maskenin bir dikdörtgenini yeniden yükler (fırçayla düzeltirken).
+  updateMatte(x, y, w, h) {
+    const gl = this.gl;
+    const m = this.matteMap;
+    if (!this.matteTex || !m || w <= 0 || h <= 0) return;
+    gl.bindTexture(gl.TEXTURE_2D, this.matteTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, m.w);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED, gl.UNSIGNED_BYTE, m.data, y * m.w + x);
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+  }
+
+  // Arka plan görseli (Arka plan aracı). null: kaldır.
+  setBgImage(source) {
+    const gl = this.gl;
+    this.bgSource = source;
+    if (this.bgTex) gl.deleteTexture(this.bgTex);
+    this.bgTex = null;
+    if (!source) return;
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.bgTex = tex;
   }
 
   _program(frag, name) {
@@ -384,6 +441,27 @@ export class Engine {
       gl.uniform1i(loc.uFaceLut, 6);
       gl.uniform1f(loc.uFaceOn, fb ? 1 : 0);
       gl.uniform4f(loc.uFaceBox, ...(fb || [0.5, 0.5, 1, 1]));
+      // Mercek bulanıklığı ve arka plan: derinlik/maske gerekenler haritası yoksa kapalı.
+      const main = spec.source !== 'compare';
+      let bl = main ? spec.blur : null;
+      if (bl && ((bl.mode === 1 && !this.depthTex) || (bl.mode === 4 && !this.matteTex))) bl = null;
+      gl.uniform4f(loc.uBlur, bl ? bl.mode : 0, bl ? bl.radius : 0, bl ? bl.bokeh || 0 : 0, 0);
+      gl.uniform4f(loc.uBlurA, ...(bl?.a || [0.5, 0.5, 0.2, 0.1]));
+      const bb = bl?.b || [1, 0];
+      gl.uniform4f(loc.uBlurB, bb[0], bb[1], 0, 0);
+      const bg = main && this.matteTex ? spec.bg : null;
+      gl.activeTexture(gl.TEXTURE7);
+      gl.bindTexture(gl.TEXTURE_2D, this.matteTex || this.blank);
+      gl.uniform1i(loc.uMatte, 7);
+      gl.activeTexture(gl.TEXTURE8);
+      gl.bindTexture(gl.TEXTURE_2D, this.bgTex || this.blank);
+      gl.uniform1i(loc.uBgImg, 8);
+      const mode = bg ? (bg.mode === 2 && !this.bgTex ? 1 : bg.mode) : 0;
+      const dir = bg?.dir || [0, 1];
+      gl.uniform4f(loc.uBgMode, mode, 0, dir[0], dir[1]);
+      gl.uniform3fv(loc.uBgA, bg?.a || [1, 1, 1]);
+      gl.uniform3fv(loc.uBgB, bg?.b || bg?.a || [1, 1, 1]);
+      gl.uniform4f(loc.uBgXf, ...(bg?.xf || [1, 1, 0, 0]));
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }

@@ -47,12 +47,20 @@ npx http-server -p 8080 -c-1 .      # ya da herhangi bir statik sunucu; http://l
 ```
 index.html, css/app.css        arayüz (iki ekran: ana ekran, düzenleyici)
 js/app.js                      denetleyici: ekranlar, araç açma/uygulama, geçmiş, kaydet, oturum
+js/home.js                     ana ekran: araç ızgarası, filtre koleksiyonları, örnek sahneler (§5.7)
 js/viewer.js                   sahne: sığdırma, yakınlaştırma/kaydırma, karşılaştırma, çizim zamanlaması
 js/gl/engine.js                WebGL2 motoru: dokular, renk tabloları, önizleme ve karolu tam çıktı
-js/gl/shaders.js               gölgelendiriciler: develop (ayar/filtre), effect (sanatsal), blur
+js/gl/shaders.js               gölgelendiriciler: develop (ayar/filtre/mercek bulanıklığı/arka plan), effect, blur
 js/tools/crop.js               Düzenle aracı (kırp, döndür, perspektif, boyut)
 js/tools/adjust.js             Ayarla aracı (kaydırıcılar, eğriler, HSL, renk dengesi, otomatik)
-js/tools/filters.js            Filtreler aracı (kategoriler, küçük resimler, yoğunluk)
+js/tools/filters.js            Filtreler aracı (kategoriler, küçük resimler, yoğunluk); filterSpec/bakeFilter
+js/tools/paint.js, kit.js      fırçalı araçların ortağı (boyama, katman tuvali, halka) ve panel parçaları
+js/tools/draw.js, mosaic.js    Çizim, Mozaik (§5.6)
+js/tools/text.js               Metin (yazı katmanları, fonts/ klasöründeki yazı tipleri)
+js/tools/blur.js               Bulanıklaştır (Akıllı/Daire/Doğrusal; mercek bulanıklığı ekran kartında)
+js/tools/eraser.js             Silgi (MI-GAN ile doldurma, js/ai/inpaint.js)
+js/tools/background.js         Arka plan (özne maskesi js/ai/matte.js; bulanık/renk/görsel/saydam/fırça)
+js/core/mosaic.js, fonts.js    mozaik desenleri (DOM’suz), yazı tipi listesi
 js/widgets/slider.js           kaydırıcı; js/widgets/curve.js eğri düzenleyici
 js/history.js, js/store.js     geri alma geçmişi ve IndexedDB
 js/export.js                   Kaydet sayfası ve iOS paylaşımı
@@ -64,7 +72,9 @@ js/core/exif.js                JPEG EXIF’inden çekim tarihi (DOM’suz)
 js/core/vision.js              derinlik normalleştirme, yüz kutuları, NMS (DOM’suz)
 js/ai/runtime.js               ONNX Runtime Web’i ve modelleri ilk kullanımda ilerlemeli yükler
 js/ai/depth.js, js/ai/faces.js derinlik tahmini (Depth Anything V2 Small), yüz algılama (UltraFace)
-vendor/ort/, models/           çalıştırıcı (14 MB) ve modeller (26 + 1,2 MB); lisanslar models/LISANSLAR.md
+vendor/ort/, models/           çalıştırıcı (14 MB) ve modeller (derinlik 26, yüz 1,2, MI-GAN 28, MODNet 6,6,
+                               IS-Net 44 MB); lisanslar models/LISANSLAR.md
+fonts/                         19 yazı tipi (OFL, latin + latin-ext woff2, ~0,8 MB); fonts/LISANS.md
 tools/meitu-olcum/             Meitu filtre ölçüm ve doğrulama betikleri (uygulamaya dahil değil)
 js/core/geometry.js            kırpma/döndürme/perspektif matematiği (DOM’suz)
 js/core/auto.js                otomatik iyileştirme (histogram)
@@ -77,15 +87,19 @@ Meitu’daki gibi: araç açılır → canlı önizleme → ✓ ile **tam çöz�
 eklenir; ✕ ile vazgeçilir. Her araç `create(host, opts)` ile kurulur ve şu nesneyi döner:
 
 ```js
-{ title, compare?: false, mount(panelBody), isDirty(), apply() → { spec, w, h, label, post? } | null, destroy() }
+{ title, compare?: false, mount(panelBody), apply() → { spec, w, h, label, post?, alpha? } | { render, label } | null, destroy() }
 ```
 
-`host`: `engine`, `viewer`, `W`, `H`, `image` (güncel kanvas), `stage`, `overlay`, `small(side)`, `photoDate`.
+`host`: `engine`, `viewer`, `W`, `H`, `image` (güncel kanvas), `stage`, `overlay`, `small(side)`, `photoDate`,
+`ai` (derinlik/yüz hazırlığı, `depthAt`, `depthMap`, `memo(anahtar, hesapla)` görüntüye bağlı önbellek).
 `post(canvas)`: tam boyutlu çıktı çizildikten sonra 2B kanvasa ek çizim (ör. tarih damgası).
-Araç, sahneye `viewer.setContent({ w, h, spec(compare) })` ile ne çizileceğini söyler. `apply()` bir çizim
-tarifi (spec) döner; `app.applyTool` bunu `engine.renderImage` ile tam boyutta çizer.
+`render()`: fırçalı araçlar sonucu kendisi üretir (2B tuval, tam çözünürlük; Promise olabilir).
+`alpha: true`: sonuç saydam (ör. arka planı silinmiş) → geçmiş ve kayıt PNG.
+Araç, sahneye `viewer.setContent({ w, h, spec(compare) }, { singlePointer })` ile ne çizileceğini söyler;
+tek parmağı kendisi kullanan araçlar `singlePointer: 'none'` verir (iki parmak yine yakınlaştırır).
 
-Yeni araç eklemek: `js/tools/` altına dosya, `app.js` → `TOOLS` (ve istenirse `SHORTCUTS`), `sw.js` → `FILES`.
+Yeni araç eklemek: `js/tools/` altına dosya, `app.js` → `TOOLS`, istenirse `home.js` → `HOME_TOOLS`,
+`sw.js` → `FILES`.
 
 ### 4.3 Motor (js/gl/engine.js)
 
@@ -234,6 +248,45 @@ Daha yakın “v2” için ayrıca `node v2-oturt.mjs <dosya> 0.7` (§5.5).
 Sıradaki adaylar (ana sayfada görülen adlar): Fuji XT30, Digicam, Moon Light, Food, Brighten, Kırmızı Işık,
 Gece Görünümü; aynı referans fotoğraftaki önizlemeleri gerekiyor.
 
+### 5.6 Yeni araçlar (sürüm 0.5.0)
+
+Kullanıcı Meitu’nun düzenleme çubuğundan Draw, Edit, Silgi, Bulanıklaştırma, Mosaic, Metin ve Background’ı
+işaretledi. Edit = mevcut Düzenle (kırp/oran/döndür/aynala/açı/perspektif/boyut; Meitu’dakilerin hepsi var).
+Meitu’nun kodu ve dosyaları kullanılmadı (kullanıcı REA ile tersine mühendislik istedi, yapılmadı); araçlar
+davranışa bakılarak bu uygulamanın koduyla yazıldı.
+
+- **Fırçalı araçlar** (`paint.js`): vuruşlar görüntü pikselinde vektör olarak saklanır; fırça çapı ekran
+  pikseli (yakınlaştırınca incelir). Önizleme sahneyi kaplayan bir 2B tuvalde, çıktı tam çözünürlükte ve
+  yalnız vuruşların kapladığı bölgede çizilir. İki parmak yakınlaştırır; ikinci parmak değince yarım vuruş iptal.
+- **Çizim:** kalem, neon (parıltı + beyaz çekirdek), fosforlu, kesik çizgi, gökkuşağı (ton çizgi boyunca döner),
+  silgi (yalnız çizimi siler). Renk paleti + serbest renk, kalınlık, saydamlık.
+- **Mozaik:** piksel, altıgen, bulanık, buzlu cam; her vuruş kendi desen ve yoğunluğuyla. Izgara görüntünün
+  (0, 0) noktasına hizalı: önizleme ve çıktı aynı (`core/mosaic.js`, testli).
+- **Metin:** çok katmanlı; sürükle, köşe tutamacıyla büyüt/döndür (düz açılara hafif yapışma), × ile sil.
+  19 OFL yazı tipi (Türkçe alt kümeli, ilk kullanımda iner), renk/kontur/etiket rengi, gölge, etiket zemini,
+  hizalama, saydamlık. Çıktı yazı tipleri yüklenince çizilir.
+- **Bulanıklaştır:** mercek bulanıklığı ekran kartında (`lensBlur`, 56 örnekli altın açı diski; bir örnek ancak
+  kendi bulanıklık yarıçapı pikseli kapsıyorsa sayılır → net özne arkaya taşmaz; parlak noktalar ağırlıklı).
+  Akıllı (portre modu): derinlikle, varsayılan odak en büyük yüz, dokunulan yer odak olur. Daire/Doğrusal:
+  net alan parmakla taşınır, boyut ve açı ayarlı.
+- **Silgi:** boyanan yer MI-GAN (cihazda) ile doldurulur; boyanan alanın çevresi, delik modelde ~220 px olacak
+  ölçekte (model sabit 128 px bağlam alıp 512’de çalışır) verilir; sonuç yalnız boyanan yere yumuşak kenarla
+  konur. Masaüstünde silme başına ~1,5 sn. Büyük nesnelerde dolgu bulanıklaşabilir (LaMa daha iyi ama 208 MB:
+  GitHub’ın 100 MB dosya sınırını aşıyor, telefonda silme başına onlarca saniye).
+- **Arka plan:** yüz varsa MODNet (kişi matı, masaüstünde 0,8 sn), yoksa IS-Net (genel ön plan, 44 MB, 4,8 sn);
+  kişinin çok gerisindekiler (arkadaki insanlar) derinlikle çıkarılır; maske `refineDepth` ile fotoğrafa
+  oturtulur (≤2048 px). Bulanık (maskeyle mercek bulanıklığı), renk/degrade, galeriden görsel (kaplayacak
+  şekilde), saydam (PNG), Fırça (Ekle/Çıkar, maske tuvali → değişen dikdörtgen dokuya yüklenir).
+
+### 5.7 Ana ekran (sürüm 0.5.0)
+
+Meitu’nun ana ekran düzeni: büyük **Düzenle** (vurgu) ve **Kamera** düğmeleri, çerçevesiz simgeli araç ızgarası
+(12 araç; fotoğraf seçilince doğrudan açılır), konu konu filtre koleksiyonları (kart → fotoğraf seç → Filtreler o
+filtre seçili açılır). iPad’de (≥900 px) iki sütun: solda koleksiyonlar, sağda düğmeler ve araçlar.
+Kart önizlemeleri dışarıdan görsel kullanmaz: uygulamanın çizdiği örnek sahnelere (koy, çiçek, yemek, manzara)
+filtrenin kendisi ekran kartında uygulanır (`home.js`; kart göründükçe, kare başına ~12 ms). Motor
+düzenleyiciyle ortak olduğu için önizleme yalnız fotoğraf açık değilken çizilir.
+
 ### 5.5 G7X v2 — ayrıntılı oturtma, Meitu = %70 (sürüm 0.4.1)
 
 Kullanıcı isteği: Meitu’ya olabildiğince yakın yeni bir “G7X v2”; Meitu’nun görünümü **%70 yoğunlukta**
@@ -346,6 +399,12 @@ sınırları, galeri/kamera seçici, paylaşım menüsü, ana ekran modu, dokunm
 19. **Derinlik haritası fotoğrafa oturtulmuş haliyle saklanır** (`estimateDepth` → `refineDepth`, ≤1536 px).
     Ölçüm araçları (`derinlik.mjs` → `olcum/derinlik.bin`) aynı haritayı kullanır; oturtma değişirse filtreler
     yeniden oturtulmalı (`v2-oturt.mjs`).
+20. **Uzun bir işten sonra katman tuvali:** Chrome’da yapay zekâyla silmeden sonra önizleme tuvali eski kareyi
+    göstermeye devam etti; ne `clearRect` ne boyut ataması gideriyordu. `createOverlay` → `invalidate(true)`
+    tuval öğesini yenisiyle değiştirir (Silgi her silmeden sonra çağırır).
+21. **Ana ekran önizlemeleri motorun kaynağını değiştirir** (örnek sahne): yalnız `!app.doc` iken çizilir,
+    ana ekrana dönünce `feed.resume()` sahneyi yeniden yükler.
+22. **Fırçalı araçlarda geçici tuvaller** iş bitince `releaseCanvas` ile bırakılır (iOS’ta tuval belleği sınırlı).
 
 ## 9. Yayın kontrol listesi
 
@@ -357,9 +416,9 @@ sınırları, galeri/kamera seçici, paylaşım menüsü, ana ekran modu, dokunm
 
 ⚑ işaretliler kullanıcının kararını gerektirir; başlamadan önce seçenekler kısaca anlatılıp sorulur.
 
-- **Aşama 2 — Yazı ve süsleme:** yazı katmanı (sürükle/döndür/ölçekle, yazı tipi, renk, kontur, gölge, hazır
-  stiller), sticker/emoji (iPhone emojileri + kendi çizdiğimiz set), çerçeveler, fırça araçları (çizim, sihirli
-  kalem, mozaik/bulanıklık, renk vurgusu, silgi). Yazı tipleri: OFL lisanslı Google Fonts, depoya gömülü ⚑ (hangi tipler).
+- **Aşama 2 — Yazı ve süsleme:** 0.5.0’da yapıldı: Metin (19 OFL yazı tipi, depoda), Çizim, Mozaik, Silgi,
+  Bulanıklaştır, Arka plan (§5.6). Kalan: sticker/emoji (iPhone emojileri + kendi çizdiğimiz set), çerçeveler,
+  hazır yazı stilleri, renk vurgusu fırçası.
 - **Aşama 3 — Güzellik:** MediaPipe Face Landmarker (Apache-2.0, ~4 MB, cihazda) ile yüz noktaları; ten maskesi
   + kenar koruyan yumuşatma; bükme (liquify) ile yüz/göz şekillendirme; saç rengi için saç bölütleme modeli.
   Model ilk kullanımda indirilip önbelleğe alınır ⚑ (depoya mı gömülsün, CDN’den mi).

@@ -1,10 +1,10 @@
 // Çevrimdışı çalışma: uygulama dosyalarını önbelleğe alır. Yeni sürüm
 // yayınlarken VERSION değerini artırın; kullanıcıya "Yenile" seçeneği çıkar.
-const VERSION = 'zeko-foto-v0.4.3';
+const VERSION = 'zeko-foto-v0.5.0';
 
-// Yapay zekâ çalıştırıcısı ve modelleri büyük olduğu için kurulumda değil,
-// ilk kullanımda önbelleğe alınır ve uygulama sürümü değişince silinmez.
-// Model dosyaları değişirse bu adı değiştirin.
+// Yapay zekâ çalıştırıcısı, modeller ve yazı tipleri büyük olduğu için
+// kurulumda değil, ilk kullanımda önbelleğe alınır ve uygulama sürümü değişince
+// silinmez. Bu dosyalardan biri değişirse (aynı adla) bu adı değiştirin.
 const AI_CACHE = 'zeko-foto-ai-v1';
 
 const FILES = [
@@ -15,6 +15,7 @@ const FILES = [
   './js/app.js',
   './js/export.js',
   './js/history.js',
+  './js/home.js',
   './js/image-io.js',
   './js/stamp.js',
   './js/store.js',
@@ -22,18 +23,30 @@ const FILES = [
   './js/viewer.js',
   './js/ai/depth.js',
   './js/ai/faces.js',
+  './js/ai/inpaint.js',
+  './js/ai/matte.js',
   './js/ai/runtime.js',
   './js/core/auto.js',
   './js/core/color.js',
   './js/core/exif.js',
+  './js/core/fonts.js',
   './js/core/geometry.js',
+  './js/core/mosaic.js',
   './js/core/presets.js',
   './js/core/vision.js',
   './js/gl/engine.js',
   './js/gl/shaders.js',
   './js/tools/adjust.js',
+  './js/tools/background.js',
+  './js/tools/blur.js',
   './js/tools/crop.js',
+  './js/tools/draw.js',
+  './js/tools/eraser.js',
   './js/tools/filters.js',
+  './js/tools/kit.js',
+  './js/tools/mosaic.js',
+  './js/tools/paint.js',
+  './js/tools/text.js',
   './js/widgets/curve.js',
   './js/widgets/slider.js',
   './icons/apple-touch-icon.png',
@@ -82,7 +95,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(caches.match('./index.html').then((r) => r || fetch(req)));
     return;
   }
-  if (/\/(vendor|models)\//.test(url.pathname)) {
+  if (/\/(vendor|models|fonts)\//.test(url.pathname)) {
     event.respondWith(aiFile(req));
     return;
   }

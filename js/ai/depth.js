@@ -1,7 +1,7 @@
 // Derinlik tahmini: Depth Anything V2 Small (Apache-2.0), cihazda.
 // Kısa kenarı 392 piksel (14'ün katları) olan küçük bir kopya üzerinde
 // çalışır; sonuç fotoğrafın kenarlarına oturtularak büyütülür.
-import { getSession } from './runtime.js';
+import { getSession, canvasPixels as pixels } from './runtime.js';
 import { normalizeDepth, refineDepth } from '../core/vision.js';
 
 export const DEPTH_MODEL = new URL('../../models/depth-anything-v2-small-q8.onnx', import.meta.url).href;
@@ -13,21 +13,6 @@ const SHORT = 392;
 const REFINED = 1536;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
-
-// Kaynağın w×h kopyasının pikselleri (saydam alanlar nötr gri).
-function pixels(source, w, h) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const g = c.getContext('2d', { willReadFrequently: true });
-  g.fillStyle = '#808080';
-  g.fillRect(0, 0, w, h);
-  g.imageSmoothingQuality = 'high';
-  g.drawImage(source, 0, 0, w, h);
-  const px = g.getImageData(0, 0, w, h).data;
-  c.width = c.height = 0;
-  return px;
-}
 
 // source: kanvas. Dönen: { w, h, data: Uint8Array } (255 = en yakın).
 export async function estimateDepth(source, { onProgress } = {}) {

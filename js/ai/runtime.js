@@ -94,6 +94,33 @@ export function getSession(name, url, sizeHint, onProgress) {
   return sessions.get(name);
 }
 
+// Oturumu bırakır (bellek; ör. tek seferlik büyük modeller). Yeniden gerekirse kurulur.
+export async function releaseSession(name) {
+  const p = sessions.get(name);
+  if (!p) return;
+  sessions.delete(name);
+  try {
+    (await p).session.release();
+  } catch {
+    /* yok say */
+  }
+}
+
+// Kaynağın w×h kopyasının RGBA pikselleri (saydam alanlar nötr gri).
+export function canvasPixels(source, w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#808080';
+  g.fillRect(0, 0, w, h);
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(source, 0, 0, w, h);
+  const px = g.getImageData(0, 0, w, h).data;
+  c.width = c.height = 0;
+  return px;
+}
+
 // Model dosyası önbellekte mi (indirme gerekip gerekmediğini göstermek için)?
 export async function isCached(url) {
   try {

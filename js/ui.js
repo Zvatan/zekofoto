@@ -32,6 +32,33 @@ const PATHS = {
     '<path d="M4 20L15 9"/><path d="M14 4l1 2.2 2.2 1-2.2 1-1 2.2-1-2.2-2.2-1 2.2-1z" fill="currentColor"/><path d="M19 12l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="currentColor" stroke="none"/>',
   brush:
     '<path d="M14.5 4.5l5 5-7.8 7.8a2 2 0 0 1-1.4.6H7.5v-2.8a2 2 0 0 1 .6-1.4z"/><path d="M7.5 18c-1 1.6-2.3 2.2-4 2"/>',
+  // yeni araçlar
+  pen: '<path d="M4 20l1.2-4.6L15.6 5a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8z"/><path d="M13.5 7l3.5 3.5"/>',
+  neon: '<path d="M3.5 15c2.5-6 5-6 7 0s4.5 6 7 0"/><path d="M3.5 15c2.5-6 5-6 7 0s4.5 6 7 0" stroke-width="5" opacity=".25"/>',
+  marker:
+    '<path d="M9 14l-4 5h6l2-2"/><path d="M9 14l7.5-9.5a2 2 0 0 1 2.9-.3l.4.4a2 2 0 0 1-.3 2.9L10 15z"/><path d="M4 21h16" opacity=".5"/>',
+  dash: '<path d="M4 18L20 6" stroke-dasharray="3 3.2"/>',
+  rainbow: '<path d="M3 17a9 9 0 0 1 18 0"/><path d="M6.5 17a5.5 5.5 0 0 1 11 0"/><path d="M10 17a2 2 0 0 1 4 0"/>',
+  eraser:
+    '<path d="M9 20h11"/><path d="M4.6 15.4l9.2-9.2a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19.1a2 2 0 0 1-1.4.6H8.3a2 2 0 0 1-1.4-.6l-2.3-2.3a1 1 0 0 1 0-1.4z"/><path d="M9.5 10.5l5 5"/>',
+  mosaic:
+    '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17"/><path d="M9.2 3.5h5.6v5.7H9.2zM3.5 9.2h5.7v5.6H3.5z" fill="currentColor" stroke="none"/><path d="M14.8 14.8h5.7v5.7h-5.7z" fill="currentColor" stroke="none" opacity=".6"/>',
+  hexagon: '<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M12 8.5l3 1.75v3.5L12 15.5l-3-1.75v-3.5z"/>',
+  blurDrop:
+    '<circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="6.6" stroke-dasharray="1.6 2.4"/><circle cx="12" cy="12" r="9.5" stroke-dasharray="1 3" opacity=".6"/>',
+  frost: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.8 4.8L12 7l2.2-2.2M9.8 19.2L12 17l2.2 2.2"/>',
+  text: '<path d="M6 6.5h12M12 6.5V19"/><path d="M9.5 19h5"/>',
+  background:
+    '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5" stroke-dasharray="2.5 2.5"/><circle cx="12" cy="10" r="2.8"/><path d="M6.8 20.5c.6-3.6 2.7-5.3 5.2-5.3s4.6 1.7 5.2 5.3"/>',
+  focusCircle: '<circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="8.5" stroke-dasharray="2 2.6"/>',
+  focusLine: '<path d="M3 9.5h18M3 14.5h18"/><path d="M3 5h18M3 19h18" stroke-dasharray="2 2.6" opacity=".7"/>',
+  alignLeft: '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
+  alignCenter: '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',
+  alignRight: '<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>',
+  shadowText: '<path d="M6 18l4.5-12h1L16 18M7.8 14h6.4"/><path d="M8 20l4.5-12h1L18 20" opacity=".35"/>',
+  label:
+    '<path d="M3.5 12.5l8-8h7.5a1.5 1.5 0 0 1 1.5 1.5v7.5l-8 8a1.5 1.5 0 0 1-2.1 0l-6.9-6.9a1.5 1.5 0 0 1 0-2.1z"/><circle cx="16" cy="8" r="1.4"/>',
+  rotateScale: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4.5V9h-4.5"/>',
   // düzenle
   rotateLeft: '<path d="M8 4.5L4.5 8 8 11.5"/><path d="M5 8h8a6 6 0 0 1 0 12h-2"/>',
   rotateRight: '<path d="M16 4.5L19.5 8 16 11.5"/><path d="M19 8h-8a6 6 0 0 0 0 12h2"/>',

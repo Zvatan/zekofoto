@@ -132,7 +132,63 @@ uniform sampler3D uFaceLut;
 uniform vec4 uFaceBox;     // elips merkezi (x, y) ve yarıçapları (x, y), çıktı koordinatında
 uniform float uFaceOn;
 
+// Mercek bulanıklığı (Bulanıklaştır ve Arka plan araçları):
+uniform vec4 uBlur;        // x: kip (0 kapalı, 1 derinlik, 2 daire, 3 doğrusal, 4 özne maskesi),
+                           // y: en büyük yarıçap (çıktının uzun kenarına oranla), z: parlak nokta (bokeh)
+uniform vec4 uBlurA;       // daire/doğrusal: merkez (çıktı 0..1), net alan yarıçapı, geçiş (uzun kenara oranla)
+uniform vec4 uBlurB;       // doğrusal: yön (cos, sin) | derinlik: odak derinliği, geçiş aralığı
+uniform sampler2D uMatte;  // özne maskesi (1: özne), kaynak doku koordinatında
+// Arka planı değiştirme: x: kip (0 kapalı, 1 renk/degrade, 2 görsel, 3 saydam), zw: degrade yönü
+uniform vec4 uBgMode;
+uniform vec3 uBgA;
+uniform vec3 uBgB;
+uniform sampler2D uBgImg;
+uniform vec4 uBgXf;        // görsel: çıktı → görsel koordinatı (ölçek xy, kayma zw)
+
 const float GK[8] = float[8](0.0, 0.15, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0);
+
+// Bir noktanın bulanıklık oranı (0 net … 1 en bulanık). uvS: kaynak, o: çıktı koordinatı.
+float blurAmt(vec2 uvS, vec2 o) {
+  int m = int(uBlur.x + 0.5);
+  vec2 a = uOut / max(uOut.x, uOut.y);
+  if (m == 1) {
+    float d = textureLod(uDepth, uvS, 0.0).r;
+    return smoothstep(0.0, 1.0, (uBlurB.x - d) / max(uBlurB.y, 1e-3));
+  }
+  if (m == 2) return smoothstep(uBlurA.z, uBlurA.z + uBlurA.w, length((o - uBlurA.xy) * a));
+  if (m == 3) return smoothstep(uBlurA.z, uBlurA.z + uBlurA.w, abs(dot((o - uBlurA.xy) * a, uBlurB.xy)));
+  if (m == 4) return 1.0 - textureLod(uMatte, uvS, 0.0).r;
+  return 0.0;
+}
+
+// Mercek bulanıklığı: disk içinde altın açı dizilimiyle örnekler toplanır.
+// Bir örnek ancak kendi bulanıklık yarıçapı bu pikseli kapsıyorsa sayılır;
+// böylece net özne arka plana taşmaz (hale yok). Parlak noktalar ağırlıklı
+// alınır (bokeh).
+vec3 lensBlur(vec2 uv, vec3 c0) {
+  float maxR = uBlur.y * max(uOut.x, uOut.y);
+  float R = blurAmt(uv, gO) * maxR;
+  if (R < 0.6) return c0;
+  vec2 ts = vec2(textureSize(uSrc, 0));
+  float lod = log2(max(1.0, R / 5.0 * ts.x / uOut.x));
+  vec3 acc = c0;
+  float wsum = 1.0;
+  for (int k = 0; k < 56; k++) {
+    float t = (float(k) + 0.5) / 56.0;
+    float r = sqrt(t) * R;
+    float th = float(k) * 2.39996323;
+    vec2 off = vec2(cos(th), sin(th)) * r;
+    vec2 o2 = gO + off / uOut;
+    vec3 h2 = uH * vec3(o2, 1.0);
+    vec2 uv2 = clamp(h2.xy / h2.z, 0.0, 1.0);
+    float cover = smoothstep(r - 1.5, r + 0.5, blurAmt(uv2, o2) * maxR);
+    vec3 col = textureLod(uSrc, uv2, lod).rgb;
+    float w = cover * (1.0 + uBlur.z * 4.0 * smoothstep(0.72, 1.0, luma(col)));
+    acc += col * w;
+    wsum += w;
+  }
+  return acc / wsum;
+}
 
 float depthGain(float d) {
   for (int i = 0; i < 7; i++) {
@@ -206,6 +262,7 @@ void main() {
   if (!locate(uv, px)) return;
   vec4 s = textureGrad(uSrc, uv, gDx, gDy);
   vec3 c = s.rgb;
+  if (uBlur.x > 0.5) c = lensBlur(uv, c);
   if (uLens.x > 0.0) {
     // Renk kayması: kırmızı ve mavi kanal merkezden zıt yönlere kayar.
     vec2 d = (uv - 0.5) * uLens.x * 0.008;
@@ -301,7 +358,27 @@ void main() {
     float L = luma(c);
     c += (n * 0.7 + (n.r + n.g + n.b) * 0.1) * uLens.w * 0.14 * (1.0 - 0.7 * L);
   }
-  finish(c, s.a, px);
+  float alpha = s.a;
+  if (uBgMode.x > 0.5) {
+    // Özne yerinde kalır, arkası renk, degrade, görsel ya da saydam olur.
+    float mt = textureLod(uMatte, uv, 0.0).r;
+    int bm = int(uBgMode.x + 0.5);
+    if (bm == 3) {
+      alpha *= mt;
+    } else {
+      vec3 bg;
+      if (bm == 1) {
+        float t = clamp(dot(gO - 0.5, uBgMode.zw) + 0.5, 0.0, 1.0);
+        bg = mix(uBgA, uBgB, t);
+      } else {
+        vec2 q = gO * uBgXf.xy + uBgXf.zw;
+        bg = textureGrad(uBgImg, q, gDx * uBgXf.xy, gDy * uBgXf.xy).rgb;
+      }
+      c = mix(bg, c, mt);
+      alpha = max(alpha, 1.0 - mt);
+    }
+  }
+  finish(c, alpha, px);
 }`;
 
 // Sanatsal efektler. Komşu örnekler kaynak dokusundan, "uR" birim yarıçapla

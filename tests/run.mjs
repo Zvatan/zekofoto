@@ -2,7 +2,7 @@
 // Renk zinciri, filtre tarifleri, geometri ve otomatik iyileştirme sınanır;
 // filtrelerin görsel kontrolü için tests/out/ altına PNG yazılır.
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -17,6 +17,8 @@ import {
 import { autoAdjust } from '../js/core/auto.js';
 import { exifDate, parseExifDate } from '../js/core/exif.js';
 import { normalizeDepth, refineDepth, letterbox, nms, decodeFaces } from '../js/core/vision.js';
+import { pixelate, hexagons, hexCenter, frost } from '../js/core/mosaic.js';
+import { FONTS } from '../js/core/fonts.js';
 import { encodePng } from './png.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out');
@@ -301,6 +303,75 @@ test('EXIF yoksa ya da bozuksa null', () => {
 });
 
 // --- yapay zekâ son işlemleri -------------------------------------------
+
+console.log('Mozaik ve yazı tipleri');
+
+test('piksel mozaiği: her hücre kendi ortalaması, ızgara görüntüye hizalı', () => {
+  // 4×2 bölge, hücre 2: sol hücre (0,10,20,30 → 15), sağ hücre (100 → 100).
+  const w = 4;
+  const h = 2;
+  const src = new Uint8ClampedArray(w * h * 4);
+  const vals = [0, 10, 100, 100, 20, 30, 100, 100];
+  vals.forEach((v, i) => src.set([v, v, v, 255], i * 4));
+  const out = pixelate(src, w, h, 0, 0, 2);
+  assert.equal(out[0], 15);
+  assert.equal(out[(1 * w + 1) * 4], 15);
+  assert.equal(out[2 * 4], 100);
+  // Bölge görüntüde x = 1'den başlıyorsa ilk sütun önceki hücreye aittir (tek başına).
+  const shifted = pixelate(src, w, h, 1, 0, 2);
+  assert.equal(shifted[0], 10); // (0 ve 20'nin bulunduğu sütun ayrı hücre: 0, 20 → 10)
+});
+
+test('altıgen merkezleri: yakın noktalar aynı hücrede, merkez kafeste', () => {
+  const size = 10;
+  const [cx, cy] = hexCenter(50, 40, size);
+  const again = hexCenter(cx + 1, cy - 1, size);
+  near(again[0], cx, 1e-9);
+  near(again[1], cy, 1e-9);
+  // Merkez kendi hücresinin merkezidir.
+  const self = hexCenter(cx, cy, size);
+  near(self[0], cx, 1e-9);
+  near(self[1], cy, 1e-9);
+  // Komşu hücre merkezi en az √3·size uzakta.
+  const other = hexCenter(cx + size * 2, cy, size);
+  assert.ok(Math.hypot(other[0] - cx, other[1] - cy) >= Math.sqrt(3) * size - 1e-6);
+  // Altıgen deseni bölge kenarında da çalışır (renk tablosu aralığı).
+  const src = new Uint8ClampedArray(30 * 20 * 4).fill(200);
+  const out = hexagons(src, 30, 20, 7, 3, 9);
+  assert.ok(out.every((v) => v === 200));
+});
+
+test('buzlu cam: tekrarlanabilir ve renkler yarıçap içinden', () => {
+  const w = 20;
+  const h = 6;
+  const src = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) src.set([x * 10, 0, 0, 255], (y * w + x) * 4);
+  const a = frost(src, w, h, 5, 5, 2);
+  const b = frost(src, w, h, 5, 5, 2);
+  assert.deepEqual([...a], [...b]);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const sx = a[(y * w + x) * 4] / 10;
+      assert.ok(Math.abs(sx - x) <= 2, `piksel ${x}: kaynak ${sx}`);
+    }
+  }
+});
+
+test('yazı tipleri: kimlikler tekil, dosyalar mevcut, Türkçe alt kümesi var', () => {
+  const ids = new Set();
+  for (const f of FONTS) {
+    assert.ok(!ids.has(f.id), `tekrarlanan ${f.id}`);
+    ids.add(f.id);
+    if (f.id === 'system') continue;
+    assert.equal(f.files.length, 2, f.id);
+    for (const [file, range] of f.files) {
+      assert.ok(existsSync(new URL(`../fonts/${file}`, import.meta.url)), `${file} yok`);
+      assert.ok(/U\+/.test(range), `${file} aralığı`);
+    }
+    // latin-ext: ğ (U+011F), ş (U+015F), İ (U+0130) bu aralıkta.
+    assert.ok(/U\+0100-02BA/.test(f.files[1][1]), `${f.id} latin-ext`);
+  }
+});
 
 console.log('Derinlik ve yüz');
 

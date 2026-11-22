@@ -18,12 +18,87 @@ function squareMatrix(W, H) {
   return new Float32Array([sx, 0, 0, 0, sy, 0, (1 - sx) / 2, (1 - sy) / 2, 1]);
 }
 
-export function filtersTool(host, { category = null } = {}) {
+// Bir filtrenin çizim tarifi. k: derlenmiş tarif (renk filtrelerinde; tablo
+// bakeFilter ile ayrıca yüklenir). ai: { flashAt(size), faceBox() } ya da null
+// (ör. ana ekran önizlemesi: flaş kadraj ortasında, yüz bölgesi yok).
+export function filterSpec(f, amount, k, W, H, { ai = null, seed = 0 } = {}) {
+  const s = defaultSpec(W, H);
+  if (!f) return s;
+  if (f.fx) {
+    const e = EFFECTS[f.fx];
+    s.effect = { id: e.id, amount, radius: e.radius };
+    return s;
+  }
+  const sp = k.spatial;
+  const x = f.extras;
+  // meituAt: ölçülen görünüm bu yoğunlukta yakalanır; konuma bağlı etkiler
+  // de aynı oranda büyütülür (tablolar bakeFilter içinde ölçeklenir).
+  const a = amount * (x?.meituAt ? 1 / x.meituAt : 1);
+  s.post = true;
+  s.postAmount = amount;
+  s.tone = [sp.highlights * a, sp.shadows * a, sp.clarity * a];
+  s.fx = [sp.sharpen * a, sp.grain * a, sp.vignette * a];
+  s.seed = seed;
+  if (x) {
+    s.glow = [(x.bloom || 0) * a, (x.halation || 0) * a, x.threshold ?? 0.62];
+    s.lens = [(x.ca || 0) * a, (x.flash || 0) * a, (x.soft || 0) * a, (x.noise || 0) * a];
+    if (x.leak) s.leak = { ...x.leak, amount: x.leak.amount * a };
+    if (x.faceFlash) {
+      s.lens[1] = x.faceFlash.amount * a;
+      s.flashAt = ai ? ai.flashAt(x.faceFlash.size) : [0.5, 0.45, 0.25];
+    }
+    // Derinlik haritası henüz yoksa motor geçişi ve ışık eğrisini atlar.
+    if (x.depth) s.depthMix = { center: x.depth.center, width: x.depth.width };
+    if (x.depthGain) {
+      const sc = x.meituAt ? 1 / x.meituAt : 1;
+      s.depthGain = { values: x.depthGain.map((g) => 1 + (g - 1) * sc), amount };
+    }
+    const box = x.face && ai ? ai.faceBox() : null;
+    if (box) s.faceMix = { box };
+  }
+  return s;
+}
+
+// Tarif (+ varsa düzeltme ızgarası) renk işlevi. scale > 1: ölçülen
+// dönüşüm büyütülür; tablo 0..1 dışına taşabilir (RGBA16F), yoğunluk
+// 1/scale olduğunda ölçülen görünüm tam yakalanır.
+function lutFn(look, grid, scale) {
+  const k = compileLook(look);
+  const o = new Float64Array(3);
+  const g = new Float64Array(3);
+  const n = grid ? Math.round(Math.cbrt(grid.length / 3)) : 0;
+  return (c) => {
+    o.set(c);
+    applyLook(c, k);
+    if (grid) {
+      sampleGrid(grid, n, o, g);
+      c[0] += g[0];
+      c[1] += g[1];
+      c[2] += g[2];
+    }
+    if (scale !== 1) for (let q = 0; q < 3; q++) c[q] = o[q] + (c[q] - o[q]) * scale;
+  };
+}
+
+const sharedBufs = () => ({ post: new Float32Array(lutLength()), fg: new Float32Array(lutLength()), face: new Float32Array(lutLength()) });
+
+// Ana tarifin (ve varsa yakın plan ile yüz tariflerinin) tablolarını motora
+// yükler; derlenmiş tarifi döner.
+export function bakeFilter(engine, f, bufs = sharedBufs()) {
+  const x = f.extras || {};
+  const sc = x.meituAt ? 1 / x.meituAt : 1;
+  const luts = { post: bakeLut(lutFn(f.look, x.grid, sc), bufs.post) };
+  if (x.depth) luts.fg = bakeLut(lutFn(x.depth.look, x.depth.grid, sc), bufs.fg);
+  if (x.face) luts.face = bakeLut(lutFn(x.face.look, x.face.grid, sc), bufs.face);
+  engine.setLuts(luts);
+  return compileLook(f.look);
+}
+
+// pick: açılınca seçilecek filtre (ör. ana ekrandaki koleksiyondan).
+export function filtersTool(host, { category = null, pick = null } = {}) {
   // date: tarih damgası açık mı; dateTouched: kullanıcı kendisi değiştirdi mi
   const st = { id: null, amounts: new Map(), date: false, dateTouched: false };
-  const lutBuf = new Float32Array(lutLength());
-  const fgBuf = new Float32Array(lutLength());
-  const faceBuf = new Float32Array(lutLength());
+  const bufs = sharedBufs();
   const seed = Math.random() * 1000;
   let compiled = null;
   let ui = null;
@@ -38,76 +113,8 @@ export function filtersTool(host, { category = null } = {}) {
   const amountOf = (f) => (st.amounts.has(f.id) ? st.amounts.get(f.id) : f.amount);
   const current = () => (st.id ? findFilter(st.id) : null);
 
-  // k: filtrenin derlenmiş tarifi (renk filtrelerinde; tablo ayrıca yüklenir).
-  function filterSpec(f, amount, k) {
-    const s = defaultSpec(host.W, host.H);
-    if (!f) return s;
-    if (f.fx) {
-      const e = EFFECTS[f.fx];
-      s.effect = { id: e.id, amount, radius: e.radius };
-      return s;
-    }
-    const sp = k.spatial;
-    const x = f.extras;
-    // meituAt: ölçülen görünüm bu yoğunlukta yakalanır; konuma bağlı etkiler
-    // de aynı oranda büyütülür (tablolar bake() içinde ölçeklenir).
-    const a = amount * (x?.meituAt ? 1 / x.meituAt : 1);
-    s.post = true;
-    s.postAmount = amount;
-    s.tone = [sp.highlights * a, sp.shadows * a, sp.clarity * a];
-    s.fx = [sp.sharpen * a, sp.grain * a, sp.vignette * a];
-    s.seed = seed;
-    if (x) {
-      s.glow = [(x.bloom || 0) * a, (x.halation || 0) * a, x.threshold ?? 0.62];
-      s.lens = [(x.ca || 0) * a, (x.flash || 0) * a, (x.soft || 0) * a, (x.noise || 0) * a];
-      if (x.leak) s.leak = { ...x.leak, amount: x.leak.amount * a };
-      if (x.faceFlash) {
-        s.lens[1] = x.faceFlash.amount * a;
-        s.flashAt = host.ai.flashAt(x.faceFlash.size);
-      }
-      // Derinlik haritası henüz yoksa motor geçişi ve ışık eğrisini atlar.
-      if (x.depth) s.depthMix = { center: x.depth.center, width: x.depth.width };
-      if (x.depthGain) {
-        const sc = x.meituAt ? 1 / x.meituAt : 1;
-        s.depthGain = { values: x.depthGain.map((g) => 1 + (g - 1) * sc), amount };
-      }
-      const box = x.face ? host.ai.faceBox() : null;
-      if (box) s.faceMix = { box };
-    }
-    return s;
-  }
-
-  // Tarif (+ varsa düzeltme ızgarası) renk işlevi. scale > 1: ölçülen
-  // dönüşüm büyütülür; tablo 0..1 dışına taşabilir (RGBA16F), yoğunluk
-  // 1/scale olduğunda ölçülen görünüm tam yakalanır.
-  function lutFn(look, grid, scale) {
-    const k = compileLook(look);
-    const o = new Float64Array(3);
-    const g = new Float64Array(3);
-    const n = grid ? Math.round(Math.cbrt(grid.length / 3)) : 0;
-    return (c) => {
-      o.set(c);
-      applyLook(c, k);
-      if (grid) {
-        sampleGrid(grid, n, o, g);
-        c[0] += g[0];
-        c[1] += g[1];
-        c[2] += g[2];
-      }
-      if (scale !== 1) for (let q = 0; q < 3; q++) c[q] = o[q] + (c[q] - o[q]) * scale;
-    };
-  }
-
-  // Ana tarifin (ve varsa yakın plan ile yüz tariflerinin) tablolarını yükler.
-  function bake(f) {
-    const x = f.extras || {};
-    const sc = x.meituAt ? 1 / x.meituAt : 1;
-    const luts = { post: bakeLut(lutFn(f.look, x.grid, sc), lutBuf) };
-    if (x.depth) luts.fg = bakeLut(lutFn(x.depth.look, x.depth.grid, sc), fgBuf);
-    if (x.face) luts.face = bakeLut(lutFn(x.face.look, x.face.grid, sc), faceBuf);
-    host.engine.setLuts(luts);
-    return compileLook(f.look);
-  }
+  const filterSpecHere = (f, amount, k) => filterSpec(f, amount, k, host.W, host.H, { ai: host.ai, seed });
+  const bake = (f) => bakeFilter(host.engine, f, bufs);
 
   function loadLut(f) {
     if (!f || f.fx) return null;
@@ -141,7 +148,7 @@ export function filtersTool(host, { category = null } = {}) {
   function spec(compare) {
     const f = current();
     if (compare || !f) return defaultSpec(host.W, host.H);
-    return filterSpec(f, amountOf(f) / 100, compiled);
+    return filterSpecHere(f, amountOf(f) / 100, compiled);
   }
 
   // --- tarih damgası --------------------------------------------------------
@@ -241,6 +248,7 @@ export function filtersTool(host, { category = null } = {}) {
     if (category) requestAnimationFrame(() => scrollToCategory(category, false));
     else markCategory();
     startThumbs();
+    if (pick && findFilter(pick)) select(pick);
   }
 
   function thumbButton(f, label) {
@@ -291,7 +299,7 @@ export function filtersTool(host, { category = null } = {}) {
         const f = findFilter(id);
         if (!btn || !f) continue;
         const k = f.fx ? null : bake(f);
-        const spec = filterSpec(f, f.amount / 100, k);
+        const spec = filterSpecHere(f, f.amount / 100, k);
         spec.matrix = matrix;
         toSquare(spec);
         const c = host.engine.renderImage(spec, THUMB, THUMB);

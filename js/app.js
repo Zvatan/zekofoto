@@ -9,30 +9,34 @@ import { openSave } from './export.js';
 import { adjustTool } from './tools/adjust.js';
 import { filtersTool } from './tools/filters.js';
 import { cropTool } from './tools/crop.js';
+import { drawTool } from './tools/draw.js';
+import { eraserTool } from './tools/eraser.js';
+import { blurTool } from './tools/blur.js';
+import { mosaicTool } from './tools/mosaic.js';
+import { textTool } from './tools/text.js';
+import { backgroundTool } from './tools/background.js';
+import { buildToolGrid, buildFeed } from './home.js';
 import { estimateDepth } from './ai/depth.js';
 import { detectFaces } from './ai/faces.js';
 
-export const VERSION = '0.4.3';
+export const VERSION = '0.5.0';
 const SCREENS = ['home', 'editor'];
 const COMPARE_SIDE = 2048;
 const $ = (sel, root = document) => root.querySelector(sel);
 
-// Düzenleyicinin alt çubuğundaki araçlar.
+// Düzenleyicinin alt çubuğundaki araçlar (Meitu'daki sırayla).
 const TOOLS = [
   { id: 'crop', label: 'Düzenle', icon: 'crop', create: cropTool },
   { id: 'adjust', label: 'Ayarla', icon: 'adjust', create: adjustTool },
   { id: 'filters', label: 'Filtreler', icon: 'filter', create: filtersTool },
+  { id: 'draw', label: 'Çizim', icon: 'pen', create: drawTool },
+  { id: 'eraser', label: 'Silgi', icon: 'eraser', create: eraserTool, ai: true },
+  { id: 'blur', label: 'Bulanıklaştır', icon: 'blurDrop', create: blurTool },
+  { id: 'mosaic', label: 'Mozaik', icon: 'mosaic', create: mosaicTool },
+  { id: 'text', label: 'Metin', icon: 'text', create: textTool },
+  { id: 'background', label: 'Arka plan', icon: 'background', create: backgroundTool, ai: true },
 ];
 
-// Ana ekran kısayolları: fotoğraf seçilince doğrudan ilgili araç açılır.
-const SHORTCUTS = [
-  { label: 'Akıllı iyileştir', icon: 'sparkle', tool: 'adjust', opts: { start: 'auto' } },
-  { label: 'Filtreler', icon: 'filter', tool: 'filters', opts: {} },
-  { label: 'Ayarla', icon: 'adjust', tool: 'adjust', opts: {} },
-  { label: 'Kırp ve döndür', icon: 'crop', tool: 'crop', opts: { tab: 'crop' } },
-  { label: 'Sanatsal', icon: 'brush', tool: 'filters', opts: { category: 'sanat' } },
-  { label: 'Perspektif', icon: 'perspective', tool: 'crop', opts: { tab: 'persp' } },
-];
 
 const app = {
   engine: null,
@@ -84,6 +88,10 @@ const host = {
     get facesReady() {
       return !!app.doc?.ai.faces;
     },
+    // { w, h, data } (255 = yakın) ya da null.
+    get depthMap() {
+      return app.doc?.ai.depth || null;
+    },
     // Derinlik haritası (motora da yüklenir).
     depth(onProgress) {
       const d = app.doc;
@@ -114,6 +122,46 @@ const host = {
       }
       return d.ai.facesP;
     },
+    // Güncel görüntüye ait, bir kez hesaplanan sonuçlar (ör. özne maskesi).
+    memo(key, compute) {
+      const d = app.doc;
+      if (!d.ai.memo.has(key)) {
+        const p = compute();
+        d.ai.memo.set(key, p);
+        p.catch(() => d.ai.memo.delete(key));
+      }
+      return d.ai.memo.get(key);
+    },
+    // Derinlik haritasında bir noktanın çevresinin ortancası (0 uzak … 1 yakın);
+    // u, v: görüntüde 0..1. Harita yoksa null.
+    depthAt(u, v, r = 3) {
+      const m = app.doc?.ai.depth;
+      if (!m) return null;
+      const cx = Math.round(u * m.w - 0.5);
+      const cy = Math.round(v * m.h - 0.5);
+      const vals = [];
+      for (let y = Math.max(0, cy - r); y <= Math.min(m.h - 1, cy + r); y++) {
+        for (let x = Math.max(0, cx - r); x <= Math.min(m.w - 1, cx + r); x++) vals.push(m.data[y * m.w + x]);
+      }
+      if (!vals.length) return null;
+      vals.sort((a, b) => a - b);
+      return vals[vals.length >> 1] / 255;
+    },
+    // Derinlik dağılımının bir yüzdeliği (ör. 0.9: en yakın %10'un sınırı).
+    depthPercentile(p) {
+      const m = app.doc?.ai.depth;
+      if (!m) return null;
+      const hist = new Uint32Array(256);
+      for (let i = 0; i < m.data.length; i += 7) hist[m.data[i]]++;
+      let total = 0;
+      for (const n of hist) total += n;
+      let acc = 0;
+      for (let v = 0; v < 256; v++) {
+        acc += hist[v];
+        if (acc >= p * total) return v / 255;
+      }
+      return 1;
+    },
     // Yüz bölgesi elipsi (gölgelendiricideki uFaceBox): en büyük yüzün ortası,
     // yarıçaplar kutunun 0,55 katı; çıktı koordinatında. Yüz yoksa null.
     faceBox() {
@@ -138,7 +186,7 @@ const host = {
   },
 };
 
-const newAi = () => ({ depth: null, depthP: null, faces: null, facesP: null });
+const newAi = () => ({ depth: null, depthP: null, faces: null, facesP: null, memo: new Map() });
 
 // --- gezinme -------------------------------------------------------------
 
@@ -203,13 +251,16 @@ function showAbout() {
 
 // --- ana ekran -----------------------------------------------------------
 
+let feed = null;
+
 function buildHome() {
-  const grid = $('#shortcut-grid');
-  for (const s of SHORTCUTS) {
-    const b = el('button', 'shortcut', `<span class="shortcut__icon">${icon(s.icon)}</span><span>${escapeHtml(s.label)}</span>`);
-    b.addEventListener('click', () => pick('gallery', { tool: s.tool, opts: s.opts }));
-    grid.append(b);
-  }
+  buildToolGrid($('#tool-grid'), (t) => pick('gallery', { tool: t.tool, opts: t.opts }));
+  feed = buildFeed($('#home-feed'), {
+    engine: app.engine,
+    // Motor düzenleyiciyle ortak: önizlemeler yalnız fotoğraf açık değilken.
+    active: () => !app.doc,
+    onPick: (f) => pick('gallery', { tool: 'filters', opts: { pick: f.id } }),
+  });
 }
 
 async function refreshResume() {
@@ -367,7 +418,7 @@ function updateBar() {
 function buildToolbar() {
   const bar = $('#toolbar');
   for (const t of TOOLS) {
-    const b = el('button', 'tool', `${icon(t.icon)}<span>${escapeHtml(t.label)}</span>`);
+    const b = el('button', `tool${t.ai ? ' tool--ai' : ''}`, `${icon(t.icon)}<span>${escapeHtml(t.label)}</span>`);
     b.dataset.tool = t.id;
     b.addEventListener('click', () => openTool(t.id));
     bar.append(b);
@@ -423,9 +474,15 @@ async function applyTool() {
   busy.show('Uygulanıyor…');
   await nextFrame();
   try {
-    const out = app.engine.renderImage(res.spec, res.w, res.h);
+    // Fırçalı araçlar sonucu kendileri üretir (render); diğerleri motorla çizilir.
+    const out = res.render ? await res.render() : app.engine.renderImage(res.spec, res.w, res.h);
     // Ekran kartı dışında çizilenler (ör. tarih damgası).
-    res.post?.(out);
+    await res.post?.(out);
+    if (res.alpha && !app.doc.hasAlpha) {
+      // Saydam sonuç (ör. arka planı silinmiş): PNG olarak saklanır ve kaydedilir.
+      app.doc.hasAlpha = true;
+      app.doc.history.meta.hasAlpha = true;
+    }
     replaceCurrent(out);
     app.doc.history.push(out, res.label).catch((err) => {
       console.error(err);
@@ -477,6 +534,7 @@ async function exitEditor() {
   const h = d.history;
   closeDoc();
   go('home');
+  feed?.resume();
   await h.discard().catch(() => {});
   refreshResume();
 }
