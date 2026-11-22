@@ -123,6 +123,9 @@ export const busy = {
     if (b.hidden) busyTimer = setTimeout(() => (b.hidden = false), 150);
     document.body.classList.add('is-busy');
   },
+  text(text) {
+    document.querySelector('#busy .busy__text').textContent = text;
+  },
   hide() {
     busyDepth = Math.max(0, busyDepth - 1);
     if (busyDepth) return;

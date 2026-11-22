@@ -16,6 +16,7 @@ import {
 } from '../js/core/geometry.js';
 import { autoAdjust } from '../js/core/auto.js';
 import { exifDate, parseExifDate } from '../js/core/exif.js';
+import { normalizeDepth, letterbox, nms, decodeFaces } from '../js/core/vision.js';
 import { encodePng } from './png.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out');
@@ -193,7 +194,20 @@ test('kamera eklerinin değerleri geçerli', () => {
   assert.ok(cams.length >= 1);
   for (const f of cams) {
     for (const k of Object.keys(f.extras)) {
-      assert.ok([...keys, 'threshold', 'leak', 'date'].includes(k), `${f.id}: bilinmeyen ek ${k}`);
+      assert.ok([...keys, 'threshold', 'leak', 'date', 'faceFlash', 'depth'].includes(k), `${f.id}: bilinmeyen ek ${k}`);
+    }
+    if (f.extras.faceFlash) {
+      const ff = f.extras.faceFlash;
+      assert.ok(ff.amount > 0 && ff.amount <= 1 && ff.size > 0, `${f.id}.faceFlash`);
+      assert.ok(f.ai, `${f.id} yapay zekâ işaretli olmalı`);
+    }
+    if (f.extras.depth) {
+      const d = f.extras.depth;
+      assert.ok(d.center > 0 && d.center < 1 && d.width > 0 && d.look, `${f.id}.depth`);
+      assert.ok(f.ai, `${f.id} yapay zekâ işaretli olmalı`);
+      // Yakın plan tarifi de geçerli bir tablo üretmeli.
+      const lut = bakeLut((c) => applyLook(c, compileLook(d.look)));
+      for (let i = 0; i < lut.length; i++) assert.ok(Number.isFinite(lut[i]) && lut[i] >= 0 && lut[i] <= 1);
     }
     for (const k of keys) {
       const v = f.extras[k] ?? 0;
@@ -260,6 +274,57 @@ test('EXIF yoksa ya da bozuksa null', () => {
   assert.equal(exifDate(new Uint8Array([1, 2, 3, 4]).buffer), null);
   assert.equal(parseExifDate('0000:00:00 00:00:00'), null);
   assert.equal(parseExifDate('abc'), null);
+});
+
+// --- yapay zekâ son işlemleri -------------------------------------------
+
+console.log('Derinlik ve yüz');
+
+test('derinlik 0..255 aralığına, uç değerler kırpılarak yayılır', () => {
+  const w = 10, h = 10;
+  const raw = new Float32Array(w * h);
+  for (let i = 0; i < raw.length; i++) raw[i] = i;
+  raw[0] = -1000; // aşırı uzak değer ölçeği bozmamalı
+  raw[99] = 5000;
+  const d = normalizeDepth(raw, w, h);
+  assert.equal(d.data.length, 100);
+  assert.equal(d.data[0], 0);
+  assert.equal(d.data[99], 255);
+  assert.ok(d.data[50] > 100 && d.data[50] < 160, `orta ${d.data[50]}`);
+  for (let i = 2; i < 97; i++) assert.ok(d.data[i] >= d.data[i - 1], 'tekdüze');
+});
+
+test('letterbox oranı korur ve ortalar', () => {
+  const lb = letterbox(960, 1280, 320, 240);
+  near(lb.scale, 0.1875, 1e-9);
+  near(lb.w, 180, 1e-9);
+  near(lb.h, 240, 1e-9);
+  near(lb.ox, 70, 1e-9);
+  near(lb.oy, 0, 1e-9);
+});
+
+test('NMS çakışan kutulardan en güçlüsünü tutar', () => {
+  const kept = nms([
+    { x: 0, y: 0, w: 10, h: 10, score: 0.8 },
+    { x: 1, y: 1, w: 10, h: 10, score: 0.95 },
+    { x: 50, y: 50, w: 10, h: 10, score: 0.7 },
+  ]);
+  assert.equal(kept.length, 2);
+  assert.equal(kept[0].score, 0.95);
+});
+
+test('yüz kutuları özgün piksellere çevrilir, büyükten küçüğe sıralanır', () => {
+  const lb = letterbox(960, 1280, 320, 240);
+  // Girdide (x0,y0,x1,y1) = (0.5,0.5,0.6,0.7) → piksel (160,120)-(192,168)
+  const scores = new Float32Array([0.1, 0.9, 0.9, 0.1, 0.2, 0.8]);
+  const boxes = new Float32Array([0.5, 0.5, 0.6, 0.7, 0, 0, 1, 1, 0.3, 0.1, 0.35, 0.2]);
+  const faces = decodeFaces(scores, boxes, 3, { inW: 320, inH: 240, srcW: 960, srcH: 1280, lb, threshold: 0.7 });
+  assert.equal(faces.length, 2);
+  // Model çıktısı 32 bit kayan nokta: tolerans buna göre.
+  near(faces[0].x, (0.5 * 320 - 70) / 0.1875, 1e-3);
+  near(faces[0].y, (0.5 * 240) / 0.1875, 1e-3);
+  near(faces[0].w, (0.1 * 320) / 0.1875, 1e-3);
+  assert.ok(faces[0].w * faces[0].h >= faces[1].w * faces[1].h);
 });
 
 // --- geometri ------------------------------------------------------------

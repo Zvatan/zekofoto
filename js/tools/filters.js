@@ -3,7 +3,7 @@
 // fotoğrafın kendisinden, ekran kartında birkaç karede bir parti halinde
 // üretilir.
 import { createSlider } from '../widgets/slider.js';
-import { el, escapeHtml, icon } from '../ui.js';
+import { el, escapeHtml, icon, busy, toast } from '../ui.js';
 import { compileLook, bakeLut, applyLook, lutLength } from '../core/color.js';
 import { FILTERS, FILTER_CATEGORIES, EFFECTS, findFilter } from '../core/presets.js';
 import { defaultSpec } from '../gl/engine.js';
@@ -22,10 +22,14 @@ export function filtersTool(host, { category = null } = {}) {
   // date: tarih damgası açık mı; dateTouched: kullanıcı kendisi değiştirdi mi
   const st = { id: null, amounts: new Map(), date: false, dateTouched: false };
   const lutBuf = new Float32Array(lutLength());
+  const fgBuf = new Float32Array(lutLength());
   const seed = Math.random() * 1000;
   let compiled = null;
   let ui = null;
-  let thumbJob = 0;
+  const thumbQueue = [];
+  let thumbRunning = false;
+  let destroyed = false;
+  let selectToken = 0;
   let slider = null;
   let stampCanvas = null;
   let offLayout = null;
@@ -53,15 +57,55 @@ export function filtersTool(host, { category = null } = {}) {
       s.glow = [(x.bloom || 0) * amount, (x.halation || 0) * amount, x.threshold ?? 0.62];
       s.lens = [(x.ca || 0) * amount, (x.flash || 0) * amount, (x.soft || 0) * amount, (x.noise || 0) * amount];
       if (x.leak) s.leak = { ...x.leak, amount: x.leak.amount * amount };
+      if (x.faceFlash) {
+        s.lens[1] = x.faceFlash.amount * amount;
+        s.flashAt = host.ai.flashAt(x.faceFlash.size);
+      }
+      // Derinlik haritası henüz yoksa motor geçişi kendiliğinden atlar.
+      if (x.depth) s.depthMix = { center: x.depth.center, width: x.depth.width };
     }
     return s;
   }
 
+  // Ana tarifin (ve varsa yakın plan tarifinin) tablolarını motora yükler.
+  function bake(f) {
+    const k = compileLook(f.look);
+    const luts = { post: bakeLut((c) => applyLook(c, k), lutBuf) };
+    if (f.extras?.depth) {
+      const kf = compileLook(f.extras.depth.look);
+      luts.fg = bakeLut((c) => applyLook(c, kf), fgBuf);
+    }
+    host.engine.setLuts(luts);
+    return k;
+  }
+
   function loadLut(f) {
     if (!f || f.fx) return null;
-    const k = compileLook(f.look);
-    host.engine.setLuts({ post: bakeLut((c) => applyLook(c, k), lutBuf) });
-    return k;
+    return bake(f);
+  }
+
+  // Yapay zekâ gerektiren filtre için derinlik/yüz hazırlığı (ilk seferde
+  // model indirilir). Başarısızsa false; filtre yine de yapay zekâsız çalışır.
+  async function ensureAi(f) {
+    const x = f?.extras;
+    if (!x) return true;
+    const jobs = [];
+    if (x.depth && !host.ai.depthReady) jobs.push(['depth', 'Derinlik hesaplanıyor…']);
+    if (x.faceFlash && !host.ai.facesReady) jobs.push(['faces', 'Yüz aranıyor…']);
+    if (!jobs.length) return true;
+    busy.show('Yapay zekâ hazırlanıyor…');
+    try {
+      for (const [job, label] of jobs) {
+        await host.ai[job]((p) => busy.text(p < 1 ? `Yapay zekâ modeli indiriliyor… %${Math.round(p * 100)}` : label));
+      }
+      return true;
+    } catch (err) {
+      console.error(err);
+      toast('Yapay zekâ çalıştırılamadı: ' + err.message);
+      return false;
+    } finally {
+      busy.hide();
+    }
   }
 
   function spec(compare) {
@@ -174,6 +218,7 @@ export function filtersTool(host, { category = null } = {}) {
     b.type = 'button';
     b.dataset.id = f ? f.id : '';
     if (f) b.dataset.cat = f.cat;
+    if (f?.ai) b.classList.add('is-ai');
     b.setAttribute('role', 'radio');
     b.innerHTML = `<span class="fthumb__img"></span><span class="fthumb__label">${escapeHtml(label)}</span>`;
     b.addEventListener('click', () => select(f ? f.id : null));
@@ -185,22 +230,25 @@ export function filtersTool(host, { category = null } = {}) {
     btn.querySelector('.fthumb__img').append(c);
   }
 
-  // Küçük resimler: her karede birkaç tane; son tablo her partiden sonra
-  // seçili filtreye geri yüklenir (önizleme bozulmasın).
-  function startThumbs() {
-    const job = ++thumbJob;
-    const buttons = [...ui.strip.querySelectorAll('.fthumb[data-id]:not([data-id=""])')];
+  // Küçük resimler: sıradaki kimlikler her karede birkaç tane çizilir; son
+  // tablo her partiden sonra seçili filtreye geri yüklenir (önizleme bozulmasın).
+  // only: yalnız bu kimlikler sıraya eklenir (ör. yapay zekâ hazır olunca).
+  function startThumbs(only = null) {
+    const ids = only || [...ui.strip.querySelectorAll('.fthumb[data-id]:not([data-id=""])')].map((b) => b.dataset.id);
+    for (const id of ids) if (!thumbQueue.includes(id)) thumbQueue.push(id);
+    if (thumbRunning) return;
+    thumbRunning = true;
     const matrix = squareMatrix(host.W, host.H);
     const date = stampText(host.photoDate);
-    let i = 0;
     const step = () => {
-      if (job !== thumbJob) return;
+      if (destroyed) return;
       const t0 = performance.now();
-      while (i < buttons.length && performance.now() - t0 < 24) {
-        const btn = buttons[i++];
-        const f = findFilter(btn.dataset.id);
-        const k = f.fx ? null : compileLook(f.look);
-        if (k) host.engine.setLuts({ post: bakeLut((c) => applyLook(c, k), lutBuf) });
+      while (thumbQueue.length && performance.now() - t0 < 24) {
+        const id = thumbQueue.shift();
+        const btn = ui.strip.querySelector(`.fthumb[data-id="${id}"]`);
+        const f = findFilter(id);
+        if (!btn || !f) continue;
+        const k = f.fx ? null : bake(f);
         const spec = filterSpec(f, f.amount / 100, k);
         spec.matrix = matrix;
         const c = host.engine.renderImage(spec, THUMB, THUMB);
@@ -209,12 +257,25 @@ export function filtersTool(host, { category = null } = {}) {
       }
       compiled = loadLut(current());
       host.viewer.invalidate();
-      if (i < buttons.length) requestAnimationFrame(step);
+      if (thumbQueue.length) requestAnimationFrame(step);
+      else thumbRunning = false;
     };
     requestAnimationFrame(step);
   }
 
-  function select(id) {
+  async function select(id) {
+    const token = ++selectToken;
+    const f0 = id ? findFilter(id) : null;
+    if (f0?.ai) {
+      const before = host.ai.depthReady + host.ai.facesReady;
+      await ensureAi(f0);
+      if (destroyed) return;
+      // Yeni hazırlanan yapay zekâ sonuçlarıyla ilgili küçük resimler yenilenir.
+      if (host.ai.depthReady + host.ai.facesReady !== before) {
+        startThumbs(FILTERS.filter((x) => x.ai).map((x) => x.id));
+      }
+      if (token !== selectToken) return; // bu arada başka filtre seçildi
+    }
     st.id = id;
     const f = current();
     compiled = loadLut(f);
@@ -285,7 +346,7 @@ export function filtersTool(host, { category = null } = {}) {
       };
     },
     destroy() {
-      thumbJob++;
+      destroyed = true;
       offLayout?.();
       stampCanvas?.remove();
     },

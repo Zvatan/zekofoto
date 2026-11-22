@@ -4,7 +4,7 @@ Safari’de çalışan, “Ana Ekrana Ekle” ile bağımsız uygulama gibi aç�
 Apple Developer hesabı ve sunucu gerekmez; GitHub Pages üzerinde ücretsiz yayınlanır.
 Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
 
-## Özellikler (sürüm 0.3)
+## Özellikler (sürüm 0.4)
 
 - **Düzenle:** kırpma (serbest, orijinal, 1:1, 4:5, 3:4, 2:3, 9:16, 16:9 …), sola/sağa 90°, yatay/dikey aynalama,
   ±45° açı düzeltme, dikey/yatay perspektif, yeniden boyutlandırma. Kırpma her zaman fotoğrafın içinde kalır.
@@ -17,6 +17,9 @@ Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
   (karakalem, renkli kalem, yağlı boya, suluboya, çizgi roman, pop art, neon, kabartma); yoğunluk ayarlı.
 - **Tarih damgası:** eski dijital kameralardaki turuncu tarih; çekim tarihi fotoğrafın EXIF bilgisinden okunur.
   CCD gibi filtrelerde kendiliğinden açılır, her filtreyle açılıp kapatılabilir.
+- **Cihazda yapay zekâ (✦ işaretli filtreler):** G7x derinlik tahminiyle yakını aydınlatıp uzağı karartır (flaşlı
+  kompakt kamera), Hard Flash ve G7x ışığı algılanan yüze verir. İlk kullanımda modeller bir kez indirilir
+  (yaklaşık 41 MB); sonra internetsiz çalışır. Fotoğraflar telefondan çıkmaz.
 - Basılı tutunca önceki hal, iki parmakla ya da çift dokunuşla yakınlaştırma.
 - Geri al / yinele (25 adım); uygulama kapanırsa **kaldığın yerden devam**.
 - **Kaydet:** JPEG (yüksek/orta) ya da PNG; iOS paylaşım menüsünde “Görüntüyü Kaydet” ile Fotoğraflar’a.
@@ -31,9 +34,11 @@ Sıradaki aşamalar: yazı ve süsleme, güzellik/rötuş, cihazda yapay zekâ a
 1. <https://github.com> → sağ üstte **+** → **New repository**.
 2. **Repository name**: ör. `zeko-foto`. **Public** seçili olsun (ücretsiz hesapta Pages için gerekir). **Create repository**.
 3. Açılan sayfada **uploading an existing file** bağlantısı.
-4. Bu klasördeki her şeyi (`index.html`, `manifest.webmanifest`, `sw.js`, `.nojekyll`, `css`, `js`, `icons`;
-   isterseniz `tests`, `tools`, `README.md`, `GELISTIRME.md`, `package.json`) sürükleyip bırakın. Klasör yapısı
-   korunmalı (`js/core/color.js` gibi). `tests/out` klasörünü ve `node_modules` klasörlerini yüklemeyin.
+4. Bu klasördeki her şeyi (`index.html`, `manifest.webmanifest`, `sw.js`, `.nojekyll`, `css`, `js`, `icons`,
+   `vendor`, `models`; isterseniz `tests`, `tools`, `README.md`, `GELISTIRME.md`, `package.json`) sürükleyip
+   bırakın. Klasör yapısı korunmalı (`js/core/color.js` gibi). `tests/out` klasörünü ve `node_modules`
+   klasörlerini yüklemeyin. **Not:** tarayıcıdan yükleme dosya başına 25 MB ile sınırlı;
+   `models/depth-anything-v2-small-q8.onnx` (26 MB) için Yol B’yi (GitHub Desktop) kullanın.
 5. **Commit changes**.
 6. **Settings** → **Pages** → **Source: Deploy from a branch**, **Branch: main**, **/(root)** → **Save**.
 7. 1–2 dakika sonra adres görünür: `https://KULLANICI-ADINIZ.github.io/zeko-foto/`.
@@ -74,6 +79,9 @@ Gereksinim: iOS 15 ve üzeri (WebGL2).
 7. **Geri al / yinele** ve uygulamayı kapatıp açınca **Devam et**.
 8. **Kaydet:** *Paylaş* → *Görüntüyü Kaydet* → Fotoğraflar’da tam çözünürlüklü fotoğraf.
 9. **Çevrimdışı:** uçak modunda açılıyor ve düzenleme yapılabiliyor.
+10. **Yapay zekâ (✦):** Filtreler → Kamera → G7x: ilk seferde “Yapay zekâ modeli indiriliyor… %” ve
+    “Derinlik hesaplanıyor…” görünüyor; kişi ve masa aydınlık, deniz/dağ koyu. Süreyi not edin (iPhone 12–14’te
+    birkaç saniye beklenir). Hard Flash’ta ışık yüzün üstünde. Uçak modunda (bir kez indirildikten sonra) da çalışıyor.
 
 ## Geliştirme
 

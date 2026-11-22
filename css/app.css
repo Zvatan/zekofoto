@@ -1032,6 +1032,19 @@ button:disabled {
   color: var(--text);
 }
 
+/* Yapay zekâ kullanan filtre (cihazda model) */
+.fthumb.is-ai .fthumb__img::before {
+  content: '✦';
+  position: absolute;
+  left: 5px;
+  bottom: 3px;
+  z-index: 1;
+  font-size: 13px;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
+}
+
 .fthumb.is-selected .fthumb__img::after {
   content: '';
   position: absolute;

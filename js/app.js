@@ -9,8 +9,10 @@ import { openSave } from './export.js';
 import { adjustTool } from './tools/adjust.js';
 import { filtersTool } from './tools/filters.js';
 import { cropTool } from './tools/crop.js';
+import { estimateDepth } from './ai/depth.js';
+import { detectFaces } from './ai/faces.js';
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 const SCREENS = ['home', 'editor'];
 const COMPARE_SIDE = 2048;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -74,7 +76,59 @@ const host = {
     if (!m.has(side)) m.set(side, scaledCanvas(app.doc.canvas, side));
     return m.get(side);
   },
+  // Cihazda yapay zekâ; sonuçlar güncel görüntü değişene kadar saklanır.
+  ai: {
+    get depthReady() {
+      return !!app.doc?.ai.depth;
+    },
+    get facesReady() {
+      return !!app.doc?.ai.faces;
+    },
+    // Derinlik haritası (motora da yüklenir).
+    depth(onProgress) {
+      const d = app.doc;
+      if (!d.ai.depthP) {
+        d.ai.depthP = estimateDepth(d.canvas, { onProgress }).then((map) => {
+          if (app.doc === d && d.ai.depthP) {
+            d.ai.depth = map;
+            app.engine.setDepth(map);
+          }
+          return map;
+        });
+        d.ai.depthP.catch(() => (d.ai.depthP = null));
+      }
+      return d.ai.depthP;
+    },
+    faces(onProgress) {
+      const d = app.doc;
+      if (!d.ai.facesP) {
+        const small = host.small(1280);
+        const k = d.canvas.width / small.width;
+        d.ai.facesP = detectFaces(small, { onProgress }).then((list) => {
+          // Küçük kopyadaki kutular özgün piksellere ölçeklenir.
+          const faces = list.map((f) => ({ x: f.x * k, y: f.y * k, w: f.w * k, h: f.h * k, score: f.score }));
+          if (app.doc === d && d.ai.facesP) d.ai.faces = faces;
+          return faces;
+        });
+        d.ai.facesP.catch(() => (d.ai.facesP = null));
+      }
+      return d.ai.facesP;
+    },
+    // Flaşın merkezi ve yarıçapı (gölgelendiricideki uFlashAt): en büyük yüzün
+    // ortası, yarıçap yüz yüksekliği × size. Yüz yoksa kadrajın ortası.
+    flashAt(size) {
+      const d = app.doc;
+      const W = d.canvas.width;
+      const H = d.canvas.height;
+      const f = d.ai.faces?.[0];
+      if (!f) return [0.5, 0.45, 0.25];
+      const diag = Math.hypot(W, H);
+      return [(f.x + f.w / 2) / W, (f.y + f.h / 2) / H, (2 * size * f.h) / diag];
+    },
+  },
 };
+
+const newAi = () => ({ depth: null, depthP: null, faces: null, facesP: null });
 
 // --- gezinme -------------------------------------------------------------
 
@@ -236,8 +290,9 @@ async function resume() {
 
 function openDoc(canvas, hasAlpha, history, compareCanvas) {
   closeDoc();
-  app.doc = { canvas, hasAlpha, history, small: new Map(), compare: null };
+  app.doc = { canvas, hasAlpha, history, small: new Map(), compare: null, ai: newAi() };
   app.engine.setSource(canvas);
+  app.engine.setDepth(null);
   app.engine.setCompare(compareCanvas);
   if (compareCanvas) {
     const first = history.meta.entries[0];
@@ -257,6 +312,7 @@ function closeDoc() {
   d.history.settled().then(() => releaseCanvas(c));
   app.doc = null;
   app.engine.setCompare(null);
+  app.engine.setDepth(null);
   app.engine.trim();
 }
 
@@ -267,6 +323,9 @@ function replaceCurrent(canvas) {
   d.canvas = canvas;
   for (const c of d.small.values()) releaseCanvas(c);
   d.small.clear();
+  // Derinlik ve yüzler eski görüntüye aitti.
+  d.ai = newAi();
+  app.engine.setDepth(null);
   app.engine.setSource(canvas);
   d.history.settled().then(() => {
     if (app.doc?.canvas !== old) releaseCanvas(old);

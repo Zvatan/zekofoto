@@ -35,8 +35,21 @@ const fx = (id, name, effect, amount = 100) => ({ id, name, cat: 'sanat', fx: ef
 //   bloom, halation (kırmızı hale), threshold (parlama eşiği), ca (renk kayması),
 //   flash, soft (yumuşaklık), noise (dijital gürültü), 0..1;
 //   leak: { color: [r, g, b], at: [x, y] (çıktı 0..1), size, amount } ışık sızması;
-//   date: true → tarih damgası varsayılan olarak açık.
-const cam = (id, name, look, extras, amount = 90) => ({ id, name, cat: 'kamera', look, extras, amount });
+//   date: true → tarih damgası varsayılan olarak açık;
+//   faceFlash: { amount, size } → flaş en büyük yüzün ortasına, yarıçapı yüz
+//     yüksekliği × size (yüz algılama gerekir; yüz yoksa kadrajın ortası);
+//   depth: { center, width, look } → derinlik haritasına göre yakın bölge "look"
+//     tarifiyle, uzak bölge ana tarifle işlenir (derinlik tahmini gerekir).
+// ai: true olan filtreler (✦) ilk kullanımda cihazdaki yapay zekâ modelini indirir.
+const cam = (id, name, look, extras, amount = 90) => ({
+  id,
+  name,
+  cat: 'kamera',
+  look,
+  extras,
+  amount,
+  ai: !!(extras && (extras.depth || extras.faceFlash)),
+});
 
 // Meitu filtrelerinin ölçülmüş karşılıkları (2026-11-22). Meitu'nun dosyaları
 // kullanılmadı: kullanıcının referans fotoğrafı ile Meitu'nun aynı fotoğraftaki
@@ -84,29 +97,47 @@ const MEITU = [
     vignette: 6,
     hsl: { red: { s: 3 }, orange: { s: 3, l: -2 }, yellow: { s: -2 } },
   }, null, 100),
-  // Meitu ışığı yüze veriyor; yüz algılama olmadan en iyi uyum ten
-  // parlaklığıyla (turuncu bant) sağlanıyor, gerisi koyulaşıyor.
+  // Meitu ışığı yüze veriyor: flaş algılanan yüzün ortasında (yüz algılama ile
+  // ölçüldü, yarıçap ≈ yüz yüksekliği), ten biraz daha aydınlık, gerisi koyu.
   cam('hardflash', 'Hard Flash', {
     curves: {
-      r: [[0, 0], [0.15, 0.091], [0.3, 0.216], [0.5, 0.416], [0.7, 0.674], [0.85, 0.856], [1, 1]],
-      g: [[0, 0], [0.15, 0.091], [0.3, 0.232], [0.5, 0.453], [0.7, 0.658], [0.85, 0.853], [1, 1]],
-      b: [[0, 0], [0.15, 0.074], [0.3, 0.209], [0.5, 0.429], [0.7, 0.646], [0.85, 0.854], [1, 1]],
+      r: [[0, 0], [0.15, 0.089], [0.3, 0.218], [0.5, 0.423], [0.7, 0.687], [0.85, 0.873], [1, 1]],
+      g: [[0, 0], [0.15, 0.082], [0.3, 0.228], [0.5, 0.456], [0.7, 0.671], [0.85, 0.869], [1, 1]],
+      b: [[0, 0], [0.15, 0.079], [0.3, 0.214], [0.5, 0.438], [0.7, 0.661], [0.85, 0.871], [1, 1]],
     },
     saturation: -16,
-    clarity: -9,
-    hsl: { red: { s: -5 }, orange: { l: 24 }, yellow: { s: 3 }, green: { s: -1 }, aqua: { s: 2 }, blue: { s: 4 } },
-  }, null, 100),
+    clarity: -13,
+    hsl: { red: { s: -7 }, orange: { s: -2, l: 21 }, yellow: { s: 4 }, green: { s: -1 }, aqua: { s: 3 }, blue: { s: 4 } },
+  }, { faceFlash: { amount: 0.272, size: 1.02 } }, 100),
+  // G7x: tam çözünürlüklü Meitu çıktısından (g7x.jpeg) ölçüldü. Flaşlı kompakt
+  // kamera: yakın olan (kişi, masa) aydınlanır, uzak olan (deniz, dağ, gökyüzü)
+  // yaklaşık 1 durak kararır ve maviye kayar; yüz ayrıca biraz aydınlanır.
+  // Ana tarif uzak bölgenin, depth.look yakın bölgenin dönüşümüdür.
+  // Bkz. GELISTIRME.md §5.3.
   cam('g7x', 'G7x', {
     curves: {
-      r: [[0, 0], [0.15, 0.106], [0.3, 0.246], [0.5, 0.471], [0.7, 0.742], [0.85, 0.926], [1, 1]],
-      g: [[0, 0], [0.15, 0.093], [0.3, 0.225], [0.5, 0.463], [0.7, 0.735], [0.85, 0.929], [1, 1]],
-      b: [[0, 0], [0.15, 0.096], [0.3, 0.233], [0.5, 0.509], [0.7, 0.786], [0.85, 0.945], [1, 1]],
+      r: [[0, 0], [0.15, 0.077], [0.3, 0.176], [0.5, 0.333], [0.7, 0.529], [0.85, 0.737], [1, 0.95]],
+      g: [[0, 0], [0.15, 0.081], [0.3, 0.179], [0.5, 0.334], [0.7, 0.52], [0.85, 0.746], [1, 1]],
+      b: [[0, 0], [0.15, 0.073], [0.3, 0.18], [0.5, 0.353], [0.7, 0.574], [0.85, 0.822], [1, 1]],
     },
-    saturation: -17,
-    clarity: -25,
-    vignette: -10,
-    hsl: { red: { s: 2 }, orange: { s: 7, l: -7 }, yellow: { s: -1 }, aqua: { s: -2 }, blue: { s: -2 } },
-  }, null, 100),
+    saturation: -23,
+    hsl: { red: { s: -1 }, orange: { s: 1 }, aqua: { h: -1, s: -1 }, blue: { h: -7, s: -5, l: 26 } },
+  }, {
+    faceFlash: { amount: 0.3, size: 0.7 },
+    depth: {
+      center: 0.386,
+      width: 0.052,
+      look: {
+        curves: {
+          r: [[0, 0], [0.15, 0.137], [0.3, 0.313], [0.5, 0.52], [0.7, 0.739], [0.85, 0.898], [1, 0.999]],
+          g: [[0, 0], [0.15, 0.134], [0.3, 0.304], [0.5, 0.514], [0.7, 0.744], [0.85, 0.898], [1, 1]],
+          b: [[0, 0], [0.15, 0.13], [0.3, 0.3], [0.5, 0.53], [0.7, 0.771], [0.85, 0.904], [1, 1]],
+        },
+        saturation: -14,
+        hsl: { red: { s: 3 }, orange: { l: 1 }, yellow: { s: 1 }, blue: { s: -1 } },
+      },
+    },
+  }, 100),
 ];
 
 export const FILTERS = [

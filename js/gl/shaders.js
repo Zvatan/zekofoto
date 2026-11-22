@@ -119,6 +119,32 @@ uniform vec4 uLens;        // renk kayması, flaş, yumuşaklık, dijital gürü
 uniform vec2 uSoftR;       // yumuşaklık yarıçapı (doku koordinatı)
 uniform vec4 uLeak;        // ışık sızması: renk (rgb) ve miktar
 uniform vec3 uLeakAt;      // ışık sızmasının merkezi (çıktı koordinatı) ve yarıçapı
+uniform vec3 uFlashAt;     // flaşın merkezi (çıktı koordinatı) ve yarıçapı (1: köşelere kadar)
+// Derinliğe göre iki renk dönüşümü (yakın/uzak), ör. flaşlı kamera filtreleri:
+uniform sampler2D uDepth;  // 0 uzak … 1 yakın (kaynak doku koordinatında)
+uniform sampler3D uFg;     // yakın plan için son tablo
+uniform vec3 uDepthMix;    // x: açık, y: geçiş merkezi, z: geçiş genişliği
+uniform vec3 uDepthTex;    // derinlik haritasının boyutu (x, y) ve kaynağın ona denk mip seviyesi
+
+// Derinlik haritası kaynaktan küçük: kenarları fotoğrafın kenarlarına oturtmak
+// için komşu derinlikler, renkleri bu pikselin rengine benzedikçe ağırlıklı
+// alınır (joint bilateral). Yoksa nesnenin çevresinde ışık halesi oluşur.
+float depthAt(vec2 uv, vec3 c0) {
+  vec2 ts = 1.0 / uDepthTex.xy;
+  float sw = 0.0;
+  float sd = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 o = vec2(float(i), float(j)) * ts;
+      vec3 cs = textureLod(uSrc, uv + o, uDepthTex.z).rgb;
+      vec3 dc = cs - c0;
+      float w = exp(-dot(dc, dc) * 40.0) * (i == 0 && j == 0 ? 1.0 : 0.7);
+      sw += w;
+      sd += w * textureLod(uDepth, uv + o, 0.0).r;
+    }
+  }
+  return sd / max(sw, 1e-4);
+}
 
 // Erken dönüşten sonra örtük türev tanımsızdır; tablolarda mip yok, Lod 0 yeterli.
 vec3 lut(sampler3D t, vec3 c) {
@@ -193,11 +219,20 @@ void main() {
     if (tone) g = lut(uPre, g);
   }
   if (tone) c = localTone(c, g);
-  if (uLut.z > 0.5) c = mix(c, lut(uPost, c), uPostAmt);
+  if (uLut.z > 0.5) {
+    vec3 cp = lut(uPost, c);
+    if (uDepthMix.x > 0.5) {
+      // Yakın bölge kendi tablosuyla; geçiş derinlik haritasına göre yumuşak.
+      float d = depthAt(uv, s.rgb);
+      float w = smoothstep(uDepthMix.y - uDepthMix.z, uDepthMix.y + uDepthMix.z, d);
+      cp = mix(cp, lut(uFg, c), w);
+    }
+    c = mix(c, cp, uPostAmt);
+  }
   if (uLens.y > 0.0) {
-    // Flaş: ortası aydınlanır, ışık kenarlara doğru düşer.
+    // Flaş: merkezi (ör. algılanan yüz) aydınlanır, ışık uzaklaştıkça düşer.
     vec2 a = uOut / max(uOut.x, uOut.y);
-    float r = length((gO - 0.5) * 2.0 * a) / length(a);
+    float r = length((gO - uFlashAt.xy) * 2.0 * a) / (uFlashAt.z * length(a));
     c *= 1.0 + uLens.y * 0.5 * (1.0 - smoothstep(0.0, 1.0, r));
   }
   if (uGlow.x > 0.0 || uGlow.y > 0.0) {

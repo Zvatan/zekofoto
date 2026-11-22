@@ -61,6 +61,10 @@ js/stamp.js                    tarih damgası (yedi parçalı turuncu rakamlar, 
 js/core/color.js               renk zinciri → 3B renk tabloları (DOM’suz, Node’da test edilir)
 js/core/presets.js             filtre tarifleri, kamera ekleri ve efekt tanımları
 js/core/exif.js                JPEG EXIF’inden çekim tarihi (DOM’suz)
+js/core/vision.js              derinlik normalleştirme, yüz kutuları, NMS (DOM’suz)
+js/ai/runtime.js               ONNX Runtime Web’i ve modelleri ilk kullanımda ilerlemeli yükler
+js/ai/depth.js, js/ai/faces.js derinlik tahmini (Depth Anything V2 Small), yüz algılama (UltraFace)
+vendor/ort/, models/           çalıştırıcı (14 MB) ve modeller (26 + 1,2 MB); lisanslar models/LISANSLAR.md
 tools/meitu-olcum/             Meitu filtre ölçüm ve doğrulama betikleri (uygulamaya dahil değil)
 js/core/geometry.js            kırpma/döndürme/perspektif matematiği (DOM’suz)
 js/core/auto.js                otomatik iyileştirme (histogram)
@@ -181,8 +185,43 @@ Sonuç (uygulamanın motoruyla, ortalama ΔE; ölçüm gürültüsü ≈2):
 | G7x | 8,1 | 3,3 | güçlü S-eğrisi, soğuk beyazlar, yumuşaklık (netlik −25) |
 
 Sınırlar: 128 px önizlemede gren, keskinlik ve parlama dokusu ölçülemez; tam çözünürlüklü önizleme gelirse
-yeniden ölçülmeli. Yüz algılama eklenince Hard Flash yüz merkezli flaşa geçmeli (serbest konumla ölçülen:
-yüz üstünde, yarıçap ≈0,22, miktar ≈0,31; ΔE 5,0 → ≈4,8 ve başka fotoğraflarda daha doğru).
+yeniden ölçülmeli. Hard Flash 0.4’te yüz merkezli flaşa geçti (`faceFlash: { amount 0,272, size 1,02 }`,
+yarıçap ≈ yüz yüksekliği; ΔE 5,0).
+
+### 5.3 G7x — tam çözünürlüklü ölçüm ve derinlikli flaş (sürüm 0.4)
+
+Kullanıcı önizlemeden ölçülen G7x’i yanlış buldu ve Meitu’nun aynı fotoğrafa uyguladığı tam çözünürlüklü
+çıktıyı (`meitu-ekran\g7x.jpeg`, 960×1280, kaymasız) gönderdi. Bulgular (`tools/meitu-olcum`):
+- G7x yapay zekâlı bir **flaş**: kameraya yakın olan (kişi, masa, masa lambası) aydınlanıyor, uzak olan (deniz −0,15,
+  orman −0,14, gökyüzü −0,09, arkadaki insanlar, iskele) kararıyor. Arkadaki insanlar da karardığı için kişi
+  bölütleme değil **derinlik** kullanılmalı (kullanıcı onayladı: ilk kullanımda ~41 MB indirme).
+- Gökyüzü ~10° maviye kayıyor; yüz ayrıca aydınlanıyor; lamba kubbesinde flaş yansıması (taklit edilmedi).
+- Önizlemeden yapılan eski ölçüm bu yüzden tutmamıştı: önizleme görünüşü gerçek çıktıyı temsil etmiyor.
+
+Model (motorda): uzak bölge ana tarif, yakın bölge `extras.depth.look`; geçiş
+`smoothstep(center ± width, derinlik)`; derinlik kenar duyarlı büyütülür (joint bilateral, 3×3, renk
+benzerliği `exp(−40·|Δc|²)`), yoksa nesne çevresinde hale olur. Üstüne yüz merkezli flaş
+(`faceFlash: { amount 0,3, size 0,7 }`). Oturtma: iki tarifin R/G/B eğrileri, doygunluk ve HSL’i + geçiş,
+koordinat inişiyle (22 bin örnek). Sonuç (uygulamanın içinden, tüm görüntü): **ΔE 10,4 → 3,8** (ortanca 2,6;
+yüzde 6,6 → 5,7). Kalan fark çoğunlukla ince doku ve iki JPEG’in sıkıştırma izi. Yumuşatma eklemek ΔE’yi biraz
+düşürüyor ama yüzü Meitu’dakinden yumuşak gösterdiği için kullanılmadı.
+
+Yeni bir tam çözünürlüklü örnek gelirse: `node derinlik.mjs` → `node tam-oturt.mjs <dosya>` →
+`node yuz-flas.mjs <dosya>` → tarifleri `presets.js`’e işle → `node tam-dogrula.mjs <dosya> <kimlik>`.
+
+### 5.4 Cihazda yapay zekâ
+
+- **Çalıştırıcı:** ONNX Runtime Web 1.31.1, yalnız WASM (SIMD, tek iş parçacığı: GitHub Pages COOP/COEP
+  vermediği için SharedArrayBuffer yok). `.wasm` ve model `fetch` ile ilerlemeli indirilir, `env.wasm.wasmBinary`
+  ile verilir. Model dosyalarındaki zararsız uyarılar `logSeverityLevel: 3` ile susturulur.
+- **Derinlik:** kısa kenar 280 px (14’ün katı), ImageNet normalleştirme; çıktı göreli ters derinlik, %2–%98
+  aralığına yayılıp 0..255 (255 = yakın). Masaüstü Chrome’da ~0,6 sn; iPhone’da ölçülmedi.
+- **Yüz:** UltraFace RFB-320, oran korunarak 320×240’a yerleştirilir, (x−127)/128; eşik 0,7, NMS 0,3. ~60 ms.
+- Sonuçlar görüntü başına bir kez hesaplanır (`app.doc.ai`), görüntü değişince silinir ve motorun derinlik
+  dokusu kaldırılır. Filtre seçilince `ensureAi` gerekeni hazırlar; hata olursa filtre yapay zekâsız çalışır.
+- **Önbellek:** `sw.js` `/vendor/` ve `/models/` dosyalarını ilk kullanımda `zeko-foto-ai-v1` önbelleğine koyar;
+  bu önbellek uygulama sürümü değişince silinmez. Model değişirse adı artırılmalı. Çevrimdışı çalıştığı test edildi.
+- Hız yetmezse: WebGPU sürümü (`ort.webgpu.min.mjs` + 27 MB `asyncify.wasm`, iOS 26+).
 Sıradaki adaylar (ana sayfada görülen adlar): Fuji XT30, Digicam, Moon Light, Food, Brighten, Kırmızı Işık,
 Gece Görünümü; aynı referans fotoğraftaki önizlemeleri gerekiyor.
 
@@ -244,6 +283,9 @@ sınırları, galeri/kamera seçici, paylaşım menüsü, ana ekran modu, dokunm
 12. **Service worker:** yeni dosya → `sw.js` `FILES`; her yayında `VERSION`. İlk kurulumda “Yeni sürüm” teklif edilmez.
 13. Renk tabloları motorda tektir: bir araç açıkken başka bir araç tabloyu değiştirmemeli; araç kapanınca
     `engine.setLuts({})` ve ana görünüm tablo kullanmaz.
+14. **Derinlik dokusu (R8)** yüklenirken `UNPACK_ALIGNMENT = 1` olmalı (satırlar 4’ün katı olmayabilir).
+15. Derinlik ve yüzler **yalnız güncel görüntüye** aittir; `replaceCurrent` ve `openDoc` bunları sıfırlar.
+16. GitHub’a tarayıcıdan yükleme 25 MB ile sınırlı; derinlik modeli 26 MB → GitHub Desktop ile gönderilmeli.
 
 ## 9. Yayın kontrol listesi
 

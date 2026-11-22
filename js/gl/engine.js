@@ -61,6 +61,8 @@ export function defaultSpec(w, h) {
     glow: [0, 0, 0.62],
     lens: [0, 0, 0, 0],
     leak: null, // { color: [r, g, b], at: [x, y], size, amount }
+    flashAt: [0.5, 0.5, 1], // flaş merkezi (çıktı 0..1) ve yarıçapı
+    depthMix: null, // { center, width }: yakın plan "fg" tablosuyla (derinlik haritası gerekir)
     effect: null,
     outside: [0.08, 0.08, 0.09],
   };
@@ -89,8 +91,10 @@ export class Engine {
     canvas.addEventListener('webglcontextrestored', () => {
       this.lost = false;
       this._init();
+      if (this.depthMap) this.setDepth(this.depthMap);
       this.onRestore?.();
     });
+    this.depthMap = null;
     this._init();
   }
 
@@ -107,7 +111,29 @@ export class Engine {
     this.tile = null;
     this.lutPre = this._lut3d();
     this.lutPost = this._lut3d();
+    this.lutFg = this._lut3d();
+    this.depthTex = null;
     this.blank = this._tex2d(1, 1, new Uint8Array([0, 0, 0, 255]));
+  }
+
+  // Derinlik haritası (0 uzak … 255 yakın), güncel kaynak için. null: kaldır.
+  setDepth(map) {
+    const gl = this.gl;
+    this.depthMap = map;
+    if (this.depthTex) gl.deleteTexture(this.depthTex);
+    this.depthTex = null;
+    if (!map) return;
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    // Tek kanallı satırlar 4 baytın katı olmayabilir.
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, map.w, map.h, 0, gl.RED, gl.UNSIGNED_BYTE, map.data);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.depthTex = t;
   }
 
   _program(frag, name) {
@@ -261,17 +287,14 @@ export class Engine {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  // data: Float32Array (LUT_SIZE³ × 4) ya da null (kapalı).
-  setLuts({ pre, post } = {}) {
+  // data: Float32Array (LUT_SIZE³ × 4) ya da null (kapalı). fg: yakın plan tablosu.
+  setLuts({ pre, post, fg } = {}) {
     const gl = this.gl;
     const n = LUT_SIZE;
-    if (pre) {
-      gl.bindTexture(gl.TEXTURE_3D, this.lutPre);
-      gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, n, n, n, gl.RGBA, gl.FLOAT, pre);
-    }
-    if (post) {
-      gl.bindTexture(gl.TEXTURE_3D, this.lutPost);
-      gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, n, n, n, gl.RGBA, gl.FLOAT, post);
+    for (const [data, tex] of [[pre, this.lutPre], [post, this.lutPost], [fg, this.lutFg]]) {
+      if (!data) continue;
+      gl.bindTexture(gl.TEXTURE_3D, tex);
+      gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, n, n, n, gl.RGBA, gl.FLOAT, data);
     }
   }
 
@@ -332,6 +355,21 @@ export class Engine {
       const k = spec.leak;
       gl.uniform4f(loc.uLeak, k ? k.color[0] : 0, k ? k.color[1] : 0, k ? k.color[2] : 0, k ? k.amount : 0);
       gl.uniform3f(loc.uLeakAt, k ? k.at[0] : 0, k ? k.at[1] : 0, k ? k.size : 1);
+      const fa = spec.flashAt || [0.5, 0.5, 1];
+      gl.uniform3f(loc.uFlashAt, fa[0], fa[1], Math.max(0.01, fa[2]));
+      // Derinlik geçişi yalnız ana kaynakta ve harita hazırsa.
+      const dm = spec.source !== 'compare' && this.depthTex ? spec.depthMix : null;
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, this.depthTex || this.blank);
+      gl.uniform1i(loc.uDepth, 4);
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_3D, this.lutFg);
+      gl.uniform1i(loc.uFg, 5);
+      gl.uniform3f(loc.uDepthMix, dm ? 1 : 0, dm ? dm.center : 0, dm ? Math.max(0.001, dm.width) : 0);
+      if (dm) {
+        const m = this.depthMap;
+        gl.uniform3f(loc.uDepthTex, m.w, m.h, Math.max(0, Math.log2(src.w / m.w)));
+      }
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
