@@ -219,6 +219,12 @@ Daha yakın “v2” için ayrıca `node v2-oturt.mjs <dosya> 0.7` (§5.5).
   ile verilir. Model dosyalarındaki zararsız uyarılar `logSeverityLevel: 3` ile susturulur.
 - **Derinlik:** kısa kenar 392 px (14’ün katı; 0.4.2’ye kadar 280), ImageNet normalleştirme; çıktı göreli ters
   derinlik, %2–%98 aralığına yayılıp 0..255 (255 = yakın). Masaüstü Chrome’da ~1,4 sn; iPhone’da ölçülmedi.
+- **Kenara oturtma (0.4.3):** model çıktısı nesnenin dışına 1–2 harita pikseli taşar; 12 MP fotoğrafta bu
+  8–15 px’lik bir hale ve keskin bir “kesik” çizgisi demekti (kullanıcının telefonunda görüldü: lamba kubbesinin
+  çevresi, kubbenin arkasındaki direk). `vision.js` → `refineDepth`: renk rehberli süzgeç (guided filter,
+  r = 3 harita pikseli, eps = 0,004); katsayılar haritanın çözünürlüğünde, sonuç uzun kenarı en çok 1536 px
+  olan kopyada her pikselin kendi rengiyle (`q = a·renk + b`). Masaüstünde 12 MP için ~0,1 sn. Motordaki 3×3
+  `depthAt` olduğu gibi kalır (artık ~2,6 px ölçekte çalışır).
 - **Yüz:** UltraFace RFB-320, oran korunarak 320×240’a yerleştirilir, (x−127)/128; eşik 0,7, NMS 0,3. ~60 ms.
 - Sonuçlar görüntü başına bir kez hesaplanır (`app.doc.ai`), görüntü değişince silinir ve motorun derinlik
   dokusu kaldırılır. Filtre seçilince `ensureAi` gerekeni hazırlar; hata olursa filtre yapay zekâsız çalışır.
@@ -267,6 +273,10 @@ arkasındaki uzak alan ince bir şerit halinde aydınlık kalıyor (ör. lamba k
 ayarlıyor (eğri/HSL büyüklük cezalı, ızgara yalnız ince düzeltme). Uygulamanın içinden, %70: **ΔE 3,14**
 (ortanca 1,90, %90 7,27), geçiş bölgesi 6,07 → 5,45; kubbe altındaki şerit neredeyse kayboldu. Eski G7x de
 daha iyi derinlikle 3,82 → 3,75. %100’de kırpılan piksel %0,32 (Meitu %0,19).
+
+0.4.3: derinlik kenara oturtuldu (§5.4) ve v2 buna göre yeniden oturtuldu (geçiş 0,386 ± 0,064). Referansın
+kendi boyunda (960×1280) sonuç aynı: v2 3,15, v1 3,75. Kazanç büyük fotoğraflarda: referans 3024×4032’ye
+büyütülerek denendi, direkteki aydınlık bant ve kubbe çevresindeki kesik çizgi kayboldu.
 
 ## 6. Geometri (js/core/geometry.js)
 
@@ -333,6 +343,9 @@ sınırları, galeri/kamera seçici, paylaşım menüsü, ana ekran modu, dokunm
     yoksa %70’te ölçülen görünüm tutmaz.
 18. **Küçük resimler fotoğrafın ortadaki karesini gösterir:** yüze bağlı konumlar (`flashAt`, `faceMix`)
     `toSquare` ile o karenin koordinatına taşınır.
+19. **Derinlik haritası fotoğrafa oturtulmuş haliyle saklanır** (`estimateDepth` → `refineDepth`, ≤1536 px).
+    Ölçüm araçları (`derinlik.mjs` → `olcum/derinlik.bin`) aynı haritayı kullanır; oturtma değişirse filtreler
+    yeniden oturtulmalı (`v2-oturt.mjs`).
 
 ## 9. Yayın kontrol listesi
 

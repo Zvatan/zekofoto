@@ -27,7 +27,8 @@ ekran görüntüleri karşılaştırılır. Uygulama bu klasöre ihtiyaç duymaz
 Meitu’nun referans fotoğrafa uyguladığı filtrenin tam boy çıktısı varsa, flaş gibi konuma/derinliğe bağlı
 etkiler de ölçülebilir:
 
-1. `node derinlik.mjs` → referansın derinlik haritası ve yüzleri (uygulamanın kendi modelleriyle).
+1. `node derinlik.mjs` → referansın derinlik haritası ve yüzleri (uygulamanın kendi modelleriyle; harita
+   uygulamadaki gibi fotoğrafın kenarlarına oturtulmuş, fotoğraf boyunda).
 2. `node tam-oturt.mjs g7x.jpeg` → uzak/yakın iki tarif + derinlik geçişi (`olcum/g7x-model.json`).
 3. `node yuz-flas.mjs g7x.jpeg` → yüz merkezli flaşın en iyi miktarı ve boyutu.
 4. Tarifleri `presets.js`’e işle, sonra `node tam-dogrula.mjs g7x.jpeg g7x` → uygulamanın içinden ΔE ve

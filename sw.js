@@ -1,6 +1,6 @@
 // Çevrimdışı çalışma: uygulama dosyalarını önbelleğe alır. Yeni sürüm
 // yayınlarken VERSION değerini artırın; kullanıcıya "Yenile" seçeneği çıkar.
-const VERSION = 'zeko-foto-v0.4.2';
+const VERSION = 'zeko-foto-v0.4.3';
 
 // Yapay zekâ çalıştırıcısı ve modelleri büyük olduğu için kurulumda değil,
 // ilk kullanımda önbelleğe alınır ve uygulama sürümü değişince silinmez.

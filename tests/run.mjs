@@ -16,7 +16,7 @@ import {
 } from '../js/core/geometry.js';
 import { autoAdjust } from '../js/core/auto.js';
 import { exifDate, parseExifDate } from '../js/core/exif.js';
-import { normalizeDepth, letterbox, nms, decodeFaces } from '../js/core/vision.js';
+import { normalizeDepth, refineDepth, letterbox, nms, decodeFaces } from '../js/core/vision.js';
 import { encodePng } from './png.mjs';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out');
@@ -316,6 +316,41 @@ test('derinlik 0..255 aralığına, uç değerler kırpılarak yayılır', () =>
   assert.equal(d.data[99], 255);
   assert.ok(d.data[50] > 100 && d.data[50] < 160, `orta ${d.data[50]}`);
   for (let i = 2; i < 97; i++) assert.ok(d.data[i] >= d.data[i - 1], 'tekdüze');
+});
+
+test('derinlik fotoğrafın kenarına oturtulur (bulanık geçiş renk kenarına çekilir)', () => {
+  // Fotoğraf: solda koyu deniz (dalgalı), sağda bej nesne; kenar x = 0,5'te.
+  const photo = (W, H) => {
+    const px = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const o = (y * W + x) * 4;
+        const right = (x + 0.5) / W > 0.5;
+        const ripple = right ? 0 : ((x * 7 + y * 3) % 5) * 8; // denizde doku
+        px[o] = right ? 190 : 50 + ripple;
+        px[o + 1] = right ? 170 : 60 + ripple;
+        px[o + 2] = right ? 150 : 70 + ripple;
+        px[o + 3] = 255;
+      }
+    }
+    return px;
+  };
+  // Model çıktısı gibi (gerçek haritada ölçüldü): uzak 50, yakın 200; geçiş kenarın
+  // dışına 2 harita pikseli taşıyor.
+  const dw = 40, dh = 20;
+  const depth = new Uint8Array(dw * dh);
+  for (let y = 0; y < dh; y++) for (let x = 0; x < dw; x++) depth[y * dw + x] = Math.round(50 + 150 * Math.min(1, Math.max(0, (x - 17) / 3)));
+  const W = 160, H = 80;
+  const out = refineDepth(depth, dw, dh, photo(dw, dh), photo(W, H), W, H);
+  const at = (x) => out[40 * W + x];
+  // Kenarın 4 piksel solu (eski haritada geçişin ortası) artık uzak, 4 piksel sağı yakın.
+  assert.ok(at(75) < 90, `kenarın solu ${at(75)}`);
+  assert.ok(at(84) > 170, `kenarın sağı ${at(84)}`);
+  // Düz bölgeler değişmez, denizin dokusu derinliğe geçmez.
+  assert.ok(Math.abs(at(10) - 50) <= 4 && Math.abs(at(150) - 200) <= 4, `düz ${at(10)} ${at(150)}`);
+  let spread = 0;
+  for (let x = 5; x < 40; x++) spread = Math.max(spread, Math.abs(at(x) - at(5)));
+  assert.ok(spread <= 4, `denizde dalgalanma ${spread}`);
 });
 
 test('letterbox oranı korur ve ortalar', () => {

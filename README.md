@@ -84,7 +84,8 @@ Gereksinim: iOS 15 ve üzeri (WebGL2).
     “Derinlik hesaplanıyor…” görünüyor; kişi ve masa aydınlık, deniz/dağ koyu. Süreyi not edin (iPhone 12–14’te
     birkaç saniye beklenir). Hard Flash’ta ışık yüzün üstünde. Uçak modunda (bir kez indirildikten sonra) da çalışıyor.
 11. **G7X v2:** yoğunluk 70 ile açılıyor; Meitu’nun G7X’iyle aynı fotoğrafta yan yana bakınca renkler ve
-    ışık çok yakın; 100’e çekince daha güçlü, yüzde ya da gökyüzünde kırılma/leke yok.
+    ışık çok yakın; 100’e çekince daha güçlü, yüzde ya da gökyüzünde kırılma/leke yok. Yakın nesnelerin
+    (kişi, lamba) çevresinde hale ya da kesik çizgisi yok; arkalarındaki direk/duvar aydınlanmıyor.
 
 ## Geliştirme
 
