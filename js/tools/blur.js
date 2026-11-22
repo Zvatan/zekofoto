@@ -1,9 +1,11 @@
 // Bulanıklaştır: mercek bulanıklığı (ekran kartında, bkz. shaders.js →
-// lensBlur). Akıllı: cihazdaki derinlik modeliyle odaklanılan uzaklık net
-// kalır, uzaklaştıkça bulanıklaşır (portre modu); dokunulan yer odak olur.
-// Daire ve Doğrusal: net alan parmakla taşınır, boyutu ve açısı ayarlanır.
+// lensBlur). Akıllı (portre modu): fotoğrafta kişi varsa sınırları kişi
+// maskesinden alınır (keskin kalır), geri kalan her şey uzaklığına göre
+// bulanıklaşır; kişi yoksa ya da kişinin dışına dokunulursa dokunulan uzaklık
+// net kalır (yalnız derinlik). Daire ve Doğrusal: net alan parmakla taşınır.
 import { el, busy, toast } from '../ui.js';
 import { defaultSpec } from '../gl/engine.js';
+import { subject } from '../ai/subject.js';
 import { createOverlay } from './paint.js';
 import { labeled, segmented } from './kit.js';
 
@@ -23,6 +25,7 @@ export function blurTool(host, { mode = 'smart' } = {}) {
     bokeh: 35,
     focus: null, // akıllı: odak derinliği
     range: 30, // akıllı: net kalan derinlik aralığı
+    person: false, // akıllı: kişi maskesi kullanılıyor mu (dokunulan yer kişideyse)
     center: [0.5, 0.5],
     size: 30, // daire/doğrusal: net alanın boyutu
     angle: 0,
@@ -32,6 +35,7 @@ export function blurTool(host, { mode = 'smart' } = {}) {
   let drag = null;
   let showGuide = 0;
   let guideTimer = 0;
+  let subj = null; // { matte, person, face }
 
   const radius = () => 0.004 + (st.amount / 100) * 0.05;
 
@@ -41,8 +45,15 @@ export function blurTool(host, { mode = 'smart' } = {}) {
     const b = { radius: radius(), bokeh: st.bokeh / 100 };
     if (st.mode === 'smart') {
       if (st.focus === null) return s;
-      const tol = 0.02 + (st.range / 100) * 0.3;
-      s.blur = { ...b, mode: 1, b: [st.focus - tol, 0.12 + (st.range / 100) * 0.25] };
+      const r = st.range / 100;
+      if (st.person) {
+        // Kişi keskin; gerisi kişinin hemen arkasından başlayarak uzaklaştıkça
+        // bulanık; "Net alan" azaldıkça kişi dışındaki her yer en az bu kadar bulanık.
+        s.blur = { ...b, mode: 5, b: [st.focus - 0.02 - r * 0.2, 0.1 + r * 0.25, 0.45 - r * 0.4] };
+      } else {
+        const tol = 0.02 + r * 0.3;
+        s.blur = { ...b, mode: 1, b: [st.focus - tol, 0.12 + r * 0.25] };
+      }
     } else {
       const r = 0.03 + (st.size / 100) * 0.45;
       const a = (st.angle * Math.PI) / 180;
@@ -135,10 +146,14 @@ export function blurTool(host, { mode = 'smart' } = {}) {
     const [u, v] = toUV(e);
     if (u < 0 || u > 1 || v < 0 || v > 1) return;
     if (st.mode === 'smart') {
-      // Dokunulan yer odak olur.
-      const d = host.ai.depthAt(u, v);
+      // Kişiye dokunulursa kişi net (maskeyle); başka yere dokunulursa o uzaklık net.
+      const m = subj?.matte;
+      const onPerson = !!(subj?.person && m && m.data[Math.min(m.h - 1, Math.floor(v * m.h)) * m.w + Math.min(m.w - 1, Math.floor(u * m.w))] > 127);
+      const f = subj?.face;
+      const d = onPerson && f ? host.ai.depthAt((f.x + f.w / 2) / W, (f.y + f.h / 2) / H, 4) : host.ai.depthAt(u, v);
       if (d !== null) {
         st.focus = d;
+        st.person = onPerson;
         update();
       }
       return;
@@ -175,8 +190,14 @@ export function blurTool(host, { mode = 'smart' } = {}) {
       const prog = (label) => (p) => busy.text(p < 1 ? `Yapay zekâ modeli indiriliyor… %${Math.round(p * 100)}` : label);
       await host.ai.depth(prog('Derinlik hesaplanıyor…'));
       const faces = await host.ai.faces(prog('Yüz aranıyor…')).catch(() => []);
-      // Varsayılan odak: en büyük yüz, yoksa en yakın bölge.
-      const f = faces[0];
+      // Kişi varsa sınırları kişi maskesinden (Arka plan aracıyla ortak).
+      if (faces.some((f) => f.h / H > 0.04)) {
+        subj = await subject(host, prog);
+        if (subj.person) host.engine.setMatte(subj.matte);
+      }
+      // Varsayılan odak: en büyük yüz (kişi net), yoksa en yakın bölge.
+      const f = subj?.face || faces[0];
+      st.person = !!subj?.person;
       st.focus = f ? host.ai.depthAt((f.x + f.w / 2) / W, (f.y + f.h / 2) / H, 4) : host.ai.depthPercentile(0.9);
       return true;
     } catch (err) {
@@ -207,7 +228,7 @@ export function blurTool(host, { mode = 'smart' } = {}) {
     c.append(amount.row, bokeh.row);
     if (st.mode === 'smart') {
       const range = labeled('Net alan', { min: 0, max: 100, value: st.range, def: 30, onInput: (v) => ((st.range = v), update()) });
-      c.append(range.row, el('p', 'ctl-hint', 'Net kalacak yere dokun.'));
+      c.append(range.row, el('p', 'ctl-hint', st.person ? 'Kişi net; başka bir yeri net yapmak için oraya dokun.' : 'Net kalacak yere dokun.'));
     } else {
       const size = labeled('Net alan', {
         min: 0,
@@ -269,6 +290,7 @@ export function blurTool(host, { mode = 'smart' } = {}) {
       host.stage.removeEventListener('pointerup', up);
       host.stage.removeEventListener('pointercancel', up);
       overlay?.destroy();
+      if (subj) host.engine.setMatte(null);
     },
   };
 }

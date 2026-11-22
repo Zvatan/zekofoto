@@ -444,11 +444,12 @@ export class Engine {
       // Mercek bulanıklığı ve arka plan: derinlik/maske gerekenler haritası yoksa kapalı.
       const main = spec.source !== 'compare';
       let bl = main ? spec.blur : null;
-      if (bl && ((bl.mode === 1 && !this.depthTex) || (bl.mode === 4 && !this.matteTex))) bl = null;
+      const needs = { 1: [this.depthTex], 4: [this.matteTex], 5: [this.depthTex, this.matteTex] };
+      if (bl && (needs[bl.mode] || []).some((t) => !t)) bl = null;
       gl.uniform4f(loc.uBlur, bl ? bl.mode : 0, bl ? bl.radius : 0, bl ? bl.bokeh || 0 : 0, 0);
       gl.uniform4f(loc.uBlurA, ...(bl?.a || [0.5, 0.5, 0.2, 0.1]));
       const bb = bl?.b || [1, 0];
-      gl.uniform4f(loc.uBlurB, bb[0], bb[1], 0, 0);
+      gl.uniform4f(loc.uBlurB, bb[0], bb[1], bb[2] || 0, 0);
       const bg = main && this.matteTex ? spec.bg : null;
       gl.activeTexture(gl.TEXTURE7);
       gl.bindTexture(gl.TEXTURE_2D, this.matteTex || this.blank);

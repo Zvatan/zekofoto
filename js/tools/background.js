@@ -1,12 +1,12 @@
-// Arka plan: özne cihazdaki yapay zekâyla ayrılır (kişi varsa MODNet, yoksa
-// IS-Net; arkadaki insanlar derinlikle temizlenir), arka plan bulanıklaşır,
-// renk/degrade ya da galeriden bir görsel olur veya silinir (saydam PNG).
-// Fırçayla maskeye eklenip çıkarılabilir. Birleştirme ekran kartında yapılır
-// (bkz. shaders.js → uBgMode, lensBlur).
+// Arka plan: özne cihazdaki yapay zekâyla ayrılır (js/ai/subject.js; Portre
+// moduyla ortak), arka plan bulanıklaşır, renk/degrade ya da galeriden bir
+// görsel olur veya silinir (saydam PNG). Fırçayla maskeye eklenip
+// çıkarılabilir. Birleştirme ekran kartında yapılır (bkz. shaders.js →
+// uBgMode, lensBlur).
 import { el, icon, busy, toast } from '../ui.js';
 import { createCanvas, fileToCanvas, releaseCanvas } from '../image-io.js';
 import { defaultSpec } from '../gl/engine.js';
-import { subjectMatte } from '../ai/matte.js';
+import { subject } from '../ai/subject.js';
 import { createPainter, tracePath, historyButtons, BRUSH_MIN, BRUSH_MAX } from './paint.js';
 import { labeled, segmented, palette, hexToRgb } from './kit.js';
 
@@ -42,6 +42,7 @@ export function backgroundTool(host) {
   let hist = null;
   let bgImg = null;
   let imgXf = [1, 1, 0, 0];
+  let focus = null; // kişi varsa yüzün derinliği (bulanık arka plan uzaklığa göre)
   const undo = [];
   const redo = [];
 
@@ -50,8 +51,12 @@ export function backgroundTool(host) {
     const s = defaultSpec(W, H);
     if (compare || !matte) return s;
     const look = st.tab === 'brush' ? 'clear' : st.look;
-    if (look === 'blur') s.blur = { mode: 4, radius: 0.004 + (st.blur / 100) * 0.05, bokeh: 0.3 };
-    else if (look === 'color') {
+    if (look === 'blur') {
+      const radius = 0.004 + (st.blur / 100) * 0.05;
+      // Kişi varsa portre modu gibi: özne keskin, gerisi uzaklaştıkça daha bulanık
+      // (en az %60); yoksa maskenin dışı eşit bulanık.
+      s.blur = focus !== null ? { mode: 5, radius, bokeh: 0.3, b: [focus - 0.04, 0.3, 0.6] } : { mode: 4, radius, bokeh: 0.3 };
+    } else if (look === 'color') {
       const g = st.grad;
       s.bg = { mode: 1, a: hexToRgb(g ? g[0] : st.color), b: hexToRgb(g ? g[1] : st.color), dir: [0, 1] };
     } else if (look === 'image' && bgImg) s.bg = { mode: 2, xf: imgXf };
@@ -63,37 +68,13 @@ export function backgroundTool(host) {
 
   // --- maske ----------------------------------------------------------------
 
-  async function computeMatte() {
-    const prog = (label) => (p) => busy.text(p < 1 ? `Yapay zekâ modeli indiriliyor… %${Math.round(p * 100)}` : label);
-    const faces = await host.ai.faces(prog('Özne aranıyor…')).catch(() => []);
-    const face = faces.find((f) => f.h / H > 0.04);
-    busy.text('Özne ayrılıyor…');
-    const m = await subjectMatte(host.image, { person: !!face, onProgress: prog('Özne ayrılıyor…') });
-    if (face) {
-      // Kişinin çok gerisinde kalanlar (ör. arkadaki insanlar) maskeden çıkar.
-      await host.ai.depth(prog('Derinlik hesaplanıyor…'));
-      const fd = host.ai.depthAt((face.x + face.w / 2) / W, (face.y + face.h / 2) / H, 4);
-      const dm = host.ai.depthMap;
-      if (fd !== null && dm) {
-        for (let y = 0; y < m.h; y++) {
-          const dy = Math.min(dm.h - 1, Math.floor(((y + 0.5) * dm.h) / m.h)) * dm.w;
-          for (let x = 0; x < m.w; x++) {
-            const i = y * m.w + x;
-            if (!m.data[i]) continue;
-            const d = dm.data[dy + Math.min(dm.w - 1, Math.floor(((x + 0.5) * dm.w) / m.w))] / 255;
-            const t = Math.min(1, Math.max(0, (d - (fd - 0.32)) / 0.14));
-            m.data[i] = Math.round(m.data[i] * t * t * (3 - 2 * t));
-          }
-        }
-      }
-    }
-    return m;
-  }
-
   async function prepare() {
     busy.show('Özne ayrılıyor…');
     try {
-      const m = await host.ai.memo('matte', computeMatte);
+      const prog = (label) => (p) => busy.text(p < 1 ? `Yapay zekâ modeli indiriliyor… %${Math.round(p * 100)}` : label);
+      const sb = await subject(host, prog);
+      const m = sb.matte;
+      if (sb.person && sb.face) focus = host.ai.depthAt((sb.face.x + sb.face.w / 2) / W, (sb.face.y + sb.face.h / 2) / H, 4);
       // Fırça değişiklikleri önbellekteki maskeyi bozmasın: kopya.
       matte = { w: m.w, h: m.h, data: m.data.slice() };
       host.engine.setMatte(matte);

@@ -15,11 +15,10 @@ import { blurTool } from './tools/blur.js';
 import { mosaicTool } from './tools/mosaic.js';
 import { textTool } from './tools/text.js';
 import { backgroundTool } from './tools/background.js';
-import { buildToolGrid, buildFeed } from './home.js';
 import { estimateDepth } from './ai/depth.js';
 import { detectFaces } from './ai/faces.js';
 
-export const VERSION = '0.5.0';
+export const VERSION = '0.5.1';
 const SCREENS = ['home', 'editor'];
 const COMPARE_SIDE = 2048;
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -251,17 +250,6 @@ function showAbout() {
 
 // --- ana ekran -----------------------------------------------------------
 
-let feed = null;
-
-function buildHome() {
-  buildToolGrid($('#tool-grid'), (t) => pick('gallery', { tool: t.tool, opts: t.opts }));
-  feed = buildFeed($('#home-feed'), {
-    engine: app.engine,
-    // Motor düzenleyiciyle ortak: önizlemeler yalnız fotoğraf açık değilken.
-    active: () => !app.doc,
-    onPick: (f) => pick('gallery', { tool: 'filters', opts: { pick: f.id } }),
-  });
-}
 
 async function refreshResume() {
   const card = $('#resume');
@@ -534,7 +522,6 @@ async function exitEditor() {
   const h = d.history;
   closeDoc();
   go('home');
-  feed?.resume();
   await h.discard().catch(() => {});
   refreshResume();
 }
@@ -543,7 +530,6 @@ async function exitEditor() {
 
 function bind() {
   hydrateIcons();
-  buildHome();
   buildToolbar();
   $('#input-camera').addEventListener('change', onPicked);
   $('#input-gallery').addEventListener('change', onPicked);

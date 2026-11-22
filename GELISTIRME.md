@@ -47,7 +47,6 @@ npx http-server -p 8080 -c-1 .      # ya da herhangi bir statik sunucu; http://l
 ```
 index.html, css/app.css        arayüz (iki ekran: ana ekran, düzenleyici)
 js/app.js                      denetleyici: ekranlar, araç açma/uygulama, geçmiş, kaydet, oturum
-js/home.js                     ana ekran: araç ızgarası, filtre koleksiyonları, örnek sahneler (§5.7)
 js/viewer.js                   sahne: sığdırma, yakınlaştırma/kaydırma, karşılaştırma, çizim zamanlaması
 js/gl/engine.js                WebGL2 motoru: dokular, renk tabloları, önizleme ve karolu tam çıktı
 js/gl/shaders.js               gölgelendiriciler: develop (ayar/filtre/mercek bulanıklığı/arka plan), effect, blur
@@ -59,7 +58,8 @@ js/tools/draw.js, mosaic.js    Çizim, Mozaik (§5.6)
 js/tools/text.js               Metin (yazı katmanları, fonts/ klasöründeki yazı tipleri)
 js/tools/blur.js               Bulanıklaştır (Akıllı/Daire/Doğrusal; mercek bulanıklığı ekran kartında)
 js/tools/eraser.js             Silgi (MI-GAN ile doldurma, js/ai/inpaint.js)
-js/tools/background.js         Arka plan (özne maskesi js/ai/matte.js; bulanık/renk/görsel/saydam/fırça)
+js/tools/background.js         Arka plan (bulanık/renk/görsel/saydam/fırça)
+js/ai/subject.js, matte.js     özne maskesi (Arka plan ve Portre modu ortak; §5.6)
 js/core/mosaic.js, fonts.js    mozaik desenleri (DOM’suz), yazı tipi listesi
 js/widgets/slider.js           kaydırıcı; js/widgets/curve.js eğri düzenleyici
 js/history.js, js/store.js     geri alma geçmişi ve IndexedDB
@@ -98,8 +98,7 @@ eklenir; ✕ ile vazgeçilir. Her araç `create(host, opts)` ile kurulur ve şu 
 Araç, sahneye `viewer.setContent({ w, h, spec(compare) }, { singlePointer })` ile ne çizileceğini söyler;
 tek parmağı kendisi kullanan araçlar `singlePointer: 'none'` verir (iki parmak yine yakınlaştırır).
 
-Yeni araç eklemek: `js/tools/` altına dosya, `app.js` → `TOOLS`, istenirse `home.js` → `HOME_TOOLS`,
-`sw.js` → `FILES`.
+Yeni araç eklemek: `js/tools/` altına dosya, `app.js` → `TOOLS`, `sw.js` → `FILES`.
 
 ### 4.3 Motor (js/gl/engine.js)
 
@@ -267,25 +266,30 @@ davranışa bakılarak bu uygulamanın koduyla yazıldı.
   hizalama, saydamlık. Çıktı yazı tipleri yüklenince çizilir.
 - **Bulanıklaştır:** mercek bulanıklığı ekran kartında (`lensBlur`, 56 örnekli altın açı diski; bir örnek ancak
   kendi bulanıklık yarıçapı pikseli kapsıyorsa sayılır → net özne arkaya taşmaz; parlak noktalar ağırlıklı).
-  Akıllı (portre modu): derinlikle, varsayılan odak en büyük yüz, dokunulan yer odak olur. Daire/Doğrusal:
-  net alan parmakla taşınır, boyut ve açı ayarlı.
+  Akıllı (portre modu, 0.5.1): kişi varsa sınırları **kişi maskesinden** (Arka planla ortak, `subject.js`):
+  kişi keskin, geri kalanı kişinin hemen arkasından başlayarak uzaklaştıkça bulanık, kişi dışı her yer en az
+  “Net alan”a bağlı bir oranda bulanık (gölgelendiricide kip 5). Kişinin dışına dokunulursa yalnız derinlikle o
+  uzaklık net (kip 1). 0.5.0’da yalnız derinlik vardı: kişiyle aynı uzaklıktaki masa/lamba net kalıyor, kişinin
+  kenarı derinlik haritasının bulanık çizgisini izliyordu (kullanıcı: “nesnenin sınırlarını doğru kavrayamıyor”).
+  Daire/Doğrusal: net alan parmakla taşınır, boyut ve açı ayarlı.
 - **Silgi:** boyanan yer MI-GAN (cihazda) ile doldurulur; boyanan alanın çevresi, delik modelde ~220 px olacak
   ölçekte (model sabit 128 px bağlam alıp 512’de çalışır) verilir; sonuç yalnız boyanan yere yumuşak kenarla
   konur. Masaüstünde silme başına ~1,5 sn. Büyük nesnelerde dolgu bulanıklaşabilir (LaMa daha iyi ama 208 MB:
   GitHub’ın 100 MB dosya sınırını aşıyor, telefonda silme başına onlarca saniye).
-- **Arka plan:** yüz varsa MODNet (kişi matı, masaüstünde 0,8 sn), yoksa IS-Net (genel ön plan, 44 MB, 4,8 sn);
-  kişinin çok gerisindekiler (arkadaki insanlar) derinlikle çıkarılır; maske `refineDepth` ile fotoğrafa
-  oturtulur (≤2048 px). Bulanık (maskeyle mercek bulanıklığı), renk/degrade, galeriden görsel (kaplayacak
-  şekilde), saydam (PNG), Fırça (Ekle/Çıkar, maske tuvali → değişen dikdörtgen dokuya yüklenir).
+- **Arka plan:** özne `subject.js` → `matte.js`: yüz varsa MODNet (kişi matı, kısa kenar 512; 640/768’de alın
+  ya da gövdede delik açıyor), yoksa IS-Net (genel ön plan, 44 MB, 4,8 sn). Maskede yüze bağlı olmayan parçalar
+  atılır (`keepComponents`: 3 px aşındırıp ince köprüleri kesme, yüz kutusuna değen bölgeler, geri büyütme);
+  kişinin çok gerisindekiler (arkadaki insanlar) derinlikle çıkarılır; `refineDepth` ile fotoğrafa oturtulur
+  (≤2048 px, r = 4, eps = 0,001) ve 0,3–0,7 aralığında sıkılaştırılır (yarı saydam hale kalmaz). Bulanık (kişi
+  varsa portre gibi: kip 5, en az %60), renk/degrade, galeriden görsel (kaplayacak şekilde), saydam (PNG),
+  Fırça (Ekle/Çıkar, maske tuvali → değişen dikdörtgen dokuya yüklenir). Önünde duran nesneler (ör. masadaki
+  tabak) kişiyle birlikte kalabilir; Fırça → Çıkar ile silinir.
 
-### 5.7 Ana ekran (sürüm 0.5.0)
+### 5.7 Ana ekran (sürüm 0.5.1)
 
-Meitu’nun ana ekran düzeni: büyük **Düzenle** (vurgu) ve **Kamera** düğmeleri, çerçevesiz simgeli araç ızgarası
-(12 araç; fotoğraf seçilince doğrudan açılır), konu konu filtre koleksiyonları (kart → fotoğraf seç → Filtreler o
-filtre seçili açılır). iPad’de (≥900 px) iki sütun: solda koleksiyonlar, sağda düğmeler ve araçlar.
-Kart önizlemeleri dışarıdan görsel kullanmaz: uygulamanın çizdiği örnek sahnelere (koy, çiçek, yemek, manzara)
-filtrenin kendisi ekran kartında uygulanır (`home.js`; kart göründükçe, kare başına ~12 ms). Motor
-düzenleyiciyle ortak olduğu için önizleme yalnız fotoğraf açık değilken çizilir.
+0.5.0’da Meitu’daki gibi araç ızgarası ve filtre koleksiyonları vardı; kullanıcı “düzenleme seçeneklerinin ana
+ekranda ne işi var” dedi, kaldırıldı. Ana ekran: logo, başlık, büyük **Düzenle** (vurgu) ve **Kamera** düğmeleri,
+“Devam et” kartı; ekranın ortasında. Bütün düzenleme seçenekleri fotoğraf açılınca düzenleyicinin alt çubuğunda.
 
 ### 5.5 G7X v2 — ayrıntılı oturtma, Meitu = %70 (sürüm 0.4.1)
 
@@ -402,9 +406,7 @@ sınırları, galeri/kamera seçici, paylaşım menüsü, ana ekran modu, dokunm
 20. **Uzun bir işten sonra katman tuvali:** Chrome’da yapay zekâyla silmeden sonra önizleme tuvali eski kareyi
     göstermeye devam etti; ne `clearRect` ne boyut ataması gideriyordu. `createOverlay` → `invalidate(true)`
     tuval öğesini yenisiyle değiştirir (Silgi her silmeden sonra çağırır).
-21. **Ana ekran önizlemeleri motorun kaynağını değiştirir** (örnek sahne): yalnız `!app.doc` iken çizilir,
-    ana ekrana dönünce `feed.resume()` sahneyi yeniden yükler.
-22. **Fırçalı araçlarda geçici tuvaller** iş bitince `releaseCanvas` ile bırakılır (iOS’ta tuval belleği sınırlı).
+21. **Fırçalı araçlarda geçici tuvaller** iş bitince `releaseCanvas` ile bırakılır (iOS’ta tuval belleği sınırlı).
 
 ## 9. Yayın kontrol listesi
 

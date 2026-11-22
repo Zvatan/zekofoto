@@ -4,15 +4,16 @@ Safari’de çalışan, “Ana Ekrana Ekle” ile bağımsız uygulama gibi aç�
 Apple Developer hesabı ve sunucu gerekmez; GitHub Pages üzerinde ücretsiz yayınlanır.
 Fotoğraflar yalnızca cihazda, ekran kartıyla (WebGL2) işlenir.
 
-## Özellikler (sürüm 0.5)
+## Özellikler (sürüm 0.5.1)
 
-- **Ana ekran:** büyük Düzenle ve Kamera düğmeleri, araç ızgarası (fotoğraf seçilince araç doğrudan açılır),
-  konu konu filtre koleksiyonları; iPad’de iki sütun.
+- **Ana ekran:** sade; Düzenle ve Kamera düğmeleri, yarım kalan düzenleme için “Devam et”. Bütün düzenleme
+  seçenekleri fotoğraf açılınca alttaki çubukta.
 - **Çizim:** kalem, neon, fosforlu, kesik çizgi, gökkuşağı fırçaları ve silgi; renk, kalınlık, saydamlık.
 - **Metin:** birden çok yazı; sürükle, büyüt/döndür; 19 yazı tipi (Türkçe karakterli), renk, kontur, gölge,
   etiket zemini, hizalama, saydamlık.
 - **Mozaik:** piksel, altıgen, bulanık, buzlu cam; fırça ve silgi.
-- **Bulanıklaştır:** Akıllı (portre modu, yapay zekâyla derinlik), Daire ve Doğrusal odak; ışık noktaları (bokeh).
+- **Bulanıklaştır:** Akıllı (portre modu: kişi yapay zekâyla ayrılır ve keskin kalır, geri kalanı uzaklığına göre
+  bulanıklaşır), Daire ve Doğrusal odak; ışık noktaları (bokeh).
 - **Silgi (✦):** istenmeyen nesnenin üstünü boya, yapay zekâ çevresine uygun doldursun.
 - **Arka plan (✦):** özne otomatik ayrılır; arka plan bulanık, renk/degrade, galeriden görsel ya da saydam (PNG);
   fırçayla düzeltme.
@@ -97,14 +98,15 @@ Gereksinim: iOS 15 ve üzeri (WebGL2).
 11. **G7X v2:** yoğunluk 70 ile açılıyor; Meitu’nun G7X’iyle aynı fotoğrafta yan yana bakınca renkler ve
     ışık çok yakın; 100’e çekince daha güçlü, yüzde ya da gökyüzünde kırılma/leke yok. Yakın nesnelerin
     (kişi, lamba) çevresinde hale ya da kesik çizgisi yok; arkalarındaki direk/duvar aydınlanmıyor.
-12. **Ana ekran:** koleksiyon kartlarında önizlemeler beliriyor; bir karta dokunup fotoğraf seçince Filtreler o
-    filtre seçili açılıyor; araç ızgarasından her araç açılıyor. iPad yatayda iki sütun.
+12. **Ana ekran:** yalnız Düzenle, Kamera ve (varsa) Devam et; fotoğraf açılınca alt çubukta 9 araç.
 13. **Çizim / Mozaik:** tek parmakla çiziliyor, iki parmakla yakınlaştırılıyor (yarım çizgi kalmıyor); geri al/
     yinele; ✓ sonrası kalınlık ve renkler aynı.
 14. **Metin:** klavye açılıyor; ğ ş ı İ ö ç ü yazı tiplerinde doğru; sürükleme, köşeden büyütme/döndürme, ×.
-15. **Bulanıklaştır:** Akıllı’da kişi net, arkası bulanık; dokunulan yer odak oluyor. Daire/Doğrusal sürükleniyor.
+15. **Bulanıklaştır:** Akıllı’da kişinin kenarları (saç, omuz, kollar) keskin, arkasında hale yok; kişinin dışına
+    dokununca o uzaklık net oluyor. Daire/Doğrusal sürükleniyor.
 16. **Silgi:** boyayıp bırakınca birkaç saniyede siliniyor; geri al çalışıyor; süreyi not edin.
-17. **Arka plan:** özne doğru ayrılıyor (kişide saç kenarları); renk, görsel, saydam (PNG kaydı) ve fırça.
+17. **Arka plan:** özne doğru ayrılıyor (kenarda yarı saydam hale yok, arkadaki insanlar dahil değil); renk,
+    görsel, saydam (PNG kaydı) ve fırça.
 
 ## Geliştirme
 

@@ -20,7 +20,7 @@ function squareMatrix(W, H) {
 
 // Bir filtrenin çizim tarifi. k: derlenmiş tarif (renk filtrelerinde; tablo
 // bakeFilter ile ayrıca yüklenir). ai: { flashAt(size), faceBox() } ya da null
-// (ör. ana ekran önizlemesi: flaş kadraj ortasında, yüz bölgesi yok).
+// (yüz bilgisi yok: flaş kadraj ortasında, yüz bölgesi yok).
 export function filterSpec(f, amount, k, W, H, { ai = null, seed = 0 } = {}) {
   const s = defaultSpec(W, H);
   if (!f) return s;
@@ -94,8 +94,7 @@ export function bakeFilter(engine, f, bufs = sharedBufs()) {
   return compileLook(f.look);
 }
 
-// pick: açılınca seçilecek filtre (ör. ana ekrandaki koleksiyondan).
-export function filtersTool(host, { category = null, pick = null } = {}) {
+export function filtersTool(host, { category = null } = {}) {
   // date: tarih damgası açık mı; dateTouched: kullanıcı kendisi değiştirdi mi
   const st = { id: null, amounts: new Map(), date: false, dateTouched: false };
   const bufs = sharedBufs();
@@ -248,7 +247,6 @@ export function filtersTool(host, { category = null, pick = null } = {}) {
     if (category) requestAnimationFrame(() => scrollToCategory(category, false));
     else markCategory();
     startThumbs();
-    if (pick && findFilter(pick)) select(pick);
   }
 
   function thumbButton(f, label) {

@@ -16,7 +16,7 @@ import {
 } from '../js/core/geometry.js';
 import { autoAdjust } from '../js/core/auto.js';
 import { exifDate, parseExifDate } from '../js/core/exif.js';
-import { normalizeDepth, refineDepth, letterbox, nms, decodeFaces } from '../js/core/vision.js';
+import { normalizeDepth, refineDepth, keepComponents, letterbox, nms, decodeFaces } from '../js/core/vision.js';
 import { pixelate, hexagons, hexCenter, frost } from '../js/core/mosaic.js';
 import { FONTS } from '../js/core/fonts.js';
 import { encodePng } from './png.mjs';
@@ -422,6 +422,29 @@ test('derinlik fotoğrafın kenarına oturtulur (bulanık geçiş renk kenarına
   let spread = 0;
   for (let x = 5; x < 40; x++) spread = Math.max(spread, Math.abs(at(x) - at(5)));
   assert.ok(spread <= 4, `denizde dalgalanma ${spread}`);
+});
+
+test('özne maskesi: yüze bağlı olmayan ve ince köprüyle bağlı parçalar atılır', () => {
+  const w = 60;
+  const h = 30;
+  const m = new Uint8Array(w * h);
+  const rect = (x0, y0, x1, y1) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * w + x] = 255;
+  };
+  rect(2, 5, 22, 28); // kişi (yüz kutusu bunun içinde)
+  rect(40, 5, 55, 20); // ayrı bir parça
+  rect(22, 10, 32, 12); // kişiden çıkan 2 piksellik ince köprü…
+  rect(32, 6, 38, 16); // …ucundaki küçük parça (ör. arkadaki birinin yüzü)
+  const keep = keepComponents(m, w, h, [{ x: 8, y: 6, w: 6, h: 6 }], { erode: 2, dilate: 0 });
+  assert.equal(keep[15 * w + 10], 1, 'kişi kalır');
+  assert.equal(keep[10 * w + 45], 0, 'ayrı parça gider');
+  assert.equal(keep[10 * w + 35], 0, 'ince köprüyle bağlı parça gider');
+  // Tohum yoksa en büyük parça ve ona yakın büyüklüktekiler (≥ %25) kalır, kırıntılar gider.
+  rect(57, 26, 59, 28); // 4 piksellik kırıntı
+  const big = keepComponents(m, w, h, [], { dilate: 0 });
+  assert.equal(big[15 * w + 10], 1);
+  assert.equal(big[10 * w + 45], 1, 'büyük ayrı parça kalır');
+  assert.equal(big[27 * w + 58], 0, 'kırıntı gider');
 });
 
 test('letterbox oranı korur ve ortalar', () => {

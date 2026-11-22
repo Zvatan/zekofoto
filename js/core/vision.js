@@ -122,6 +122,106 @@ export function refineDepth(depth, dw, dh, lo, hi, W, H, { r = 3, eps = 4e-3 } =
   return out;
 }
 
+// İkili maskede ayrılabilir en büyük (grow) ya da en küçük (shrink) süzgeç, yarıçap r.
+function morph(m, w, h, r, grow) {
+  const t = new Uint8Array(m.length);
+  const o = new Uint8Array(m.length);
+  const want = grow ? 1 : 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = 1 - want;
+      for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) {
+        if (m[y * w + k] === want) {
+          v = want;
+          break;
+        }
+      }
+      t[y * w + x] = v;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = 1 - want;
+      for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) {
+        if (t[k * w + x] === want) {
+          v = want;
+          break;
+        }
+      }
+      o[y * w + x] = v;
+    }
+  }
+  return o;
+}
+
+// Özne maskesinde kopuk parçaları ayıklar. Eşiğin (threshold) üstündeki
+// bölge önce erode piksel aşındırılır: ince köprülerle bağlı parçalar (ör.
+// arkadaki birinin yüzü) ayrılır. Tohum kutularına (ör. yüzler) değen
+// bölgeler; tohum yoksa en büyüğü ve ona yakın büyüklüktekiler (≥ minFrac)
+// kalır, sonra özgün şekilleriyle geri büyütülür ve dilate piksel
+// genişletilir (yumuşak kenar korunur). Dönen: Uint8Array 0/1.
+export function keepComponents(data, w, h, seeds = [], { threshold = 128, erode = 0, dilate = 3, minFrac = 0.25 } = {}) {
+  const n = w * h;
+  const bin = new Uint8Array(n);
+  for (let i = 0; i < n; i++) bin[i] = data[i] >= threshold ? 1 : 0;
+  const core = erode > 0 ? morph(bin, w, h, erode, false) : bin;
+  const label = new Int32Array(n).fill(-1);
+  const sizes = [];
+  const stack = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (label[i] !== -1 || !core[i]) continue;
+    const id = sizes.length;
+    let top = 0;
+    let size = 0;
+    stack[top++] = i;
+    label[i] = id;
+    while (top) {
+      const p = stack[--top];
+      size++;
+      const x = p % w;
+      const y = (p / w) | 0;
+      if (x > 0 && label[p - 1] === -1 && core[p - 1]) (label[p - 1] = id), (stack[top++] = p - 1);
+      if (x < w - 1 && label[p + 1] === -1 && core[p + 1]) (label[p + 1] = id), (stack[top++] = p + 1);
+      if (y > 0 && label[p - w] === -1 && core[p - w]) (label[p - w] = id), (stack[top++] = p - w);
+      if (y < h - 1 && label[p + w] === -1 && core[p + w]) (label[p + w] = id), (stack[top++] = p + w);
+    }
+    sizes.push(size);
+  }
+  const keep = new Uint8Array(sizes.length);
+  let any = false;
+  for (const s of seeds) {
+    const x0 = Math.max(0, Math.floor(s.x));
+    const y0 = Math.max(0, Math.floor(s.y));
+    const x1 = Math.min(w, Math.ceil(s.x + s.w));
+    const y1 = Math.min(h, Math.ceil(s.y + s.h));
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const l = label[y * w + x];
+        if (l >= 0) {
+          keep[l] = 1;
+          any = true;
+        }
+      }
+    }
+  }
+  if (!any && sizes.length) {
+    const big = Math.max(...sizes);
+    sizes.forEach((s, l) => {
+      if (s >= big * minFrac) keep[l] = 1;
+    });
+  }
+  // Kalan çekirdekler özgün şekline geri büyütülür (aşındırma kadar, özgün
+  // maskenin içinde), sonra yumuşak kenar için genişletilir.
+  let m = new Uint8Array(n);
+  for (let i = 0; i < n; i++) m[i] = label[i] >= 0 && keep[label[i]] ? 1 : 0;
+  if (erode > 0) {
+    m = morph(m, w, h, erode + 1, true);
+    for (let i = 0; i < n; i++) m[i] &= bin[i];
+  }
+  if (dilate > 0) m = morph(m, w, h, dilate, true);
+  return m;
+}
+
 // Görüntüyü en/boy oranını koruyarak W×H girdiye yerleştirir.
 export function letterbox(srcW, srcH, W, H) {
   const scale = Math.min(W / srcW, H / srcH);

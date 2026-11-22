@@ -1,6 +1,6 @@
 // Çevrimdışı çalışma: uygulama dosyalarını önbelleğe alır. Yeni sürüm
 // yayınlarken VERSION değerini artırın; kullanıcıya "Yenile" seçeneği çıkar.
-const VERSION = 'zeko-foto-v0.5.0';
+const VERSION = 'zeko-foto-v0.5.1';
 
 // Yapay zekâ çalıştırıcısı, modeller ve yazı tipleri büyük olduğu için
 // kurulumda değil, ilk kullanımda önbelleğe alınır ve uygulama sürümü değişince
@@ -15,7 +15,6 @@ const FILES = [
   './js/app.js',
   './js/export.js',
   './js/history.js',
-  './js/home.js',
   './js/image-io.js',
   './js/stamp.js',
   './js/store.js',
@@ -26,6 +25,7 @@ const FILES = [
   './js/ai/inpaint.js',
   './js/ai/matte.js',
   './js/ai/runtime.js',
+  './js/ai/subject.js',
   './js/core/auto.js',
   './js/core/color.js',
   './js/core/exif.js',

@@ -133,10 +133,12 @@ uniform vec4 uFaceBox;     // elips merkezi (x, y) ve yarıçapları (x, y), ç�
 uniform float uFaceOn;
 
 // Mercek bulanıklığı (Bulanıklaştır ve Arka plan araçları):
-uniform vec4 uBlur;        // x: kip (0 kapalı, 1 derinlik, 2 daire, 3 doğrusal, 4 özne maskesi),
+uniform vec4 uBlur;        // x: kip (0 kapalı, 1 derinlik, 2 daire, 3 doğrusal, 4 özne maskesi,
+                           //    5 portre: özne maskesi net + gerisi derinliğe göre),
                            // y: en büyük yarıçap (çıktının uzun kenarına oranla), z: parlak nokta (bokeh)
 uniform vec4 uBlurA;       // daire/doğrusal: merkez (çıktı 0..1), net alan yarıçapı, geçiş (uzun kenara oranla)
-uniform vec4 uBlurB;       // doğrusal: yön (cos, sin) | derinlik: odak derinliği, geçiş aralığı
+uniform vec4 uBlurB;       // doğrusal: yön (cos, sin) | derinlik/portre: odak derinliği, geçiş aralığı,
+                           // (portre) özne dışında en az bulanıklık
 uniform sampler2D uMatte;  // özne maskesi (1: özne), kaynak doku koordinatında
 // Arka planı değiştirme: x: kip (0 kapalı, 1 renk/degrade, 2 görsel, 3 saydam), zw: degrade yönü
 uniform vec4 uBgMode;
@@ -158,6 +160,13 @@ float blurAmt(vec2 uvS, vec2 o) {
   if (m == 2) return smoothstep(uBlurA.z, uBlurA.z + uBlurA.w, length((o - uBlurA.xy) * a));
   if (m == 3) return smoothstep(uBlurA.z, uBlurA.z + uBlurA.w, abs(dot((o - uBlurA.xy) * a, uBlurB.xy)));
   if (m == 4) return 1.0 - textureLod(uMatte, uvS, 0.0).r;
+  if (m == 5) {
+    // Özne (kişi) sınırları maskeden: keskin; geri kalanı uzaklaştıkça bulanık.
+    float mt = textureLod(uMatte, uvS, 0.0).r;
+    float d = textureLod(uDepth, uvS, 0.0).r;
+    float far = smoothstep(0.0, 1.0, (uBlurB.x - d) / max(uBlurB.y, 1e-3));
+    return (1.0 - mt) * max(far, uBlurB.z);
+  }
   return 0.0;
 }
 
