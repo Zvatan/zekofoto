@@ -126,10 +126,17 @@ const M = {
   center: V1.center, width: V1.width, G: GK.map(() => 1), flash: face ? 0.3 : 0, fsize: 0.7, vig: 0,
 };
 
-function regionColors(set) {
-  const ks = [M.bg, M.fg, M.face].map((L) => compileLook(toLook(L)).post);
+const REGIONS = ['bg', 'fg', 'face'];
+// rcs[n][r]: n. örneğin r. bölge tarifinden geçmiş rengi. only: yalnız o bölge yenilenir.
+function regionColors(set, rcs = null, only = null) {
+  const out = rcs || set.map(() => [null, null, null]);
   const tmp = new Float64Array(3);
-  return set.map((s) => ks.map((k) => { tmp.set(s.c); applyPost(tmp, k); return [tmp[0], tmp[1], tmp[2]]; }));
+  REGIONS.forEach((name, r) => {
+    if (only !== null && only !== r) return;
+    const k = compileLook(toLook(M[name])).post;
+    set.forEach((s, n) => { tmp.set(s.c); applyPost(tmp, k); out[n][r] = [tmp[0], tmp[1], tmp[2]]; });
+  });
+  return out;
 }
 const lightAt = (s) => gainAt(M.G, s.d) * (1 + M.flash * 0.5 * (1 - smooth(0, 1, face ? s.dist / (M.fsize * face.h) : 1))) * vigAt(s.u, s.v, M.vig);
 function predict(s, rc) {
@@ -256,13 +263,29 @@ const spatial = [
   P(() => M.vig, (v) => (M.vig = v), -0.6, 0.6, 0.05, 0.005),
   ...(face ? [P(() => M.flash, (v) => (M.flash = v), 0, 1, 0.05, 0.005), P(() => M.fsize, (v) => (M.fsize = v), 0.3, 4, 0.2, 0.02)] : []),
 ];
-for (let round = 0; round < 3; round++) {
+// Bölge tarifinin eğri ve HSL'i sıfırdan uzaklaştıkça hafif ceza: ızgara
+// yalnız ince düzeltmeyi taşısın, ana dönüşüm başka fotoğraflara da genellenen
+// pürüzsüz tarifte kalsın.
+const lookReg = (Lk) => {
+  let r = 0;
+  for (const ch of ['r', 'g', 'b']) { const y = Lk.curve[ch]; for (let i = 1; i < y.length - 1; i++) r += (y[i - 1] - 2 * y[i] + y[i + 1]) ** 2 * 2e-3; }
+  for (const v of Object.values(Lk.hsl)) r += (v / 100) ** 2 * 4e-4;
+  return r;
+};
+// Grid'ler o turda sabitken bir bölge tarifini iner (yalnız o bölgenin rengi yeniden hesaplanır).
+function tuneLook(r, set, rounds) {
+  const name = REGIONS[r];
+  const local = regionColors(set);
+  return descend(lookParams(M[name]), () => { regionColors(set, local, r); return loss(set, local) + lookReg(M[name]); }, rounds);
+}
+const fsub = sub.filter((s) => s.fm > 0.3);
+for (let round = 0; round < 4; round++) {
   descend(spatial, L, 30);
-  if (face) {
-    // Yüz tarifi yalnız yüz çevresindeki örneklerle (hız için).
-    const fsub = sub.filter((s) => s.fm > 0.3);
-    descend(lookParams(M.face), () => loss(fsub, regionColors(fsub)), 15);
-  }
+  // Uzak ve yakın tarifler (örneklerin yarısıyla, hız için), yüz tarifi yüz çevresinde.
+  const half = sub.filter((_, k) => k % 2 === round % 2);
+  tuneLook(0, half, 12);
+  tuneLook(1, half, 12);
+  if (face) tuneLook(2, fsub, 15);
   rcs = regionColors(sub);
   solveGrids(sub, rcs);
   console.log(`tur ${round + 1}: kayıp ${L().toExponential(3)} (${((Date.now() - t0) / 1000).toFixed(0)} sn)`);

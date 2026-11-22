@@ -1,12 +1,14 @@
 // Derinlik tahmini: Depth Anything V2 Small (Apache-2.0), cihazda.
-// Kısa kenarı 280 piksel (14'ün katları) olan küçük bir kopya üzerinde
-// çalışır; flaş gibi yumuşak geçişler için bu çözünürlük yeterlidir.
+// Kısa kenarı 392 piksel (14'ün katları) olan küçük bir kopya üzerinde
+// çalışır.
 import { getSession } from './runtime.js';
 import { normalizeDepth } from '../core/vision.js';
 
 export const DEPTH_MODEL = new URL('../../models/depth-anything-v2-small-q8.onnx', import.meta.url).href;
 const MODEL_SIZE = 27.3e6;
-const SHORT = 280;
+// 392: nesne kenarları 280'e göre belirgin daha doğru (yakın/uzak geçişinde
+// hata ~%10 az); 518 aynı kalitede ama iki kat yavaş (GELISTIRME.md §5.5).
+const SHORT = 392;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 

@@ -217,8 +217,8 @@ Daha yakın “v2” için ayrıca `node v2-oturt.mjs <dosya> 0.7` (§5.5).
 - **Çalıştırıcı:** ONNX Runtime Web 1.31.1, yalnız WASM (SIMD, tek iş parçacığı: GitHub Pages COOP/COEP
   vermediği için SharedArrayBuffer yok). `.wasm` ve model `fetch` ile ilerlemeli indirilir, `env.wasm.wasmBinary`
   ile verilir. Model dosyalarındaki zararsız uyarılar `logSeverityLevel: 3` ile susturulur.
-- **Derinlik:** kısa kenar 280 px (14’ün katı), ImageNet normalleştirme; çıktı göreli ters derinlik, %2–%98
-  aralığına yayılıp 0..255 (255 = yakın). Masaüstü Chrome’da ~0,6 sn; iPhone’da ölçülmedi.
+- **Derinlik:** kısa kenar 392 px (14’ün katı; 0.4.2’ye kadar 280), ImageNet normalleştirme; çıktı göreli ters
+  derinlik, %2–%98 aralığına yayılıp 0..255 (255 = yakın). Masaüstü Chrome’da ~1,4 sn; iPhone’da ölçülmedi.
 - **Yüz:** UltraFace RFB-320, oran korunarak 320×240’a yerleştirilir, (x−127)/128; eşik 0,7, NMS 0,3. ~60 ms.
 - Sonuçlar görüntü başına bir kez hesaplanır (`app.doc.ai`), görüntü değişince silinir ve motorun derinlik
   dokusu kaldırılır. Filtre seçilince `ensureAi` gerekeni hazırlar; hata olursa filtre yapay zekâsız çalışır.
@@ -261,7 +261,12 @@ arkasındaki uzak alan ince bir şerit halinde aydınlık kalıyor (ör. lamba k
 - `depthAt` komşuluğunu büyütmek (5×5, 7×7, daha ince mip, daha keskin renk ağırlığı) fark etmiyor (5,91 → 5,88):
   şerit büyütmeden değil, derinlik haritasının kendisinden.
 - Derinlik modelinin kısa kenarı 280 → 392 → 518: masaüstünde 0,6 / 1,4 / 3,1 sn; geçiş bölgesinde ΔE
-  5,91 → 5,33 → 5,28. Şerit inceliyor ama kaybolmuyor. iPhone süresi ölçülmediği için 280’de kalındı ⚑.
+  5,91 → 5,33 → 5,28. **0.4.2’den beri 392** (518 aynı kalitede, iki kat yavaş).
+
+0.4.2: derinlik 392 px’e alındı ve v2 yeniden oturtuldu; `v2-oturt.mjs` artık uzak/yakın tarifleri de
+ayarlıyor (eğri/HSL büyüklük cezalı, ızgara yalnız ince düzeltme). Uygulamanın içinden, %70: **ΔE 3,14**
+(ortanca 1,90, %90 7,27), geçiş bölgesi 6,07 → 5,45; kubbe altındaki şerit neredeyse kayboldu. Eski G7x de
+daha iyi derinlikle 3,82 → 3,75. %100’de kırpılan piksel %0,32 (Meitu %0,19).
 
 ## 6. Geometri (js/core/geometry.js)
 

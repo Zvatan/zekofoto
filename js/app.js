@@ -12,7 +12,7 @@ import { cropTool } from './tools/crop.js';
 import { estimateDepth } from './ai/depth.js';
 import { detectFaces } from './ai/faces.js';
 
-export const VERSION = '0.4.1';
+export const VERSION = '0.4.2';
 const SCREENS = ['home', 'editor'];
 const COMPARE_SIDE = 2048;
 const $ = (sel, root = document) => root.querySelector(sel);
